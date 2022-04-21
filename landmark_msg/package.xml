@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>landmarks_msg</name>
+  <version>1.0.0</version>
+  <description>
+    Landmark messages
+  </description>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>message_generation</build_depend>
+  <depend>message_runtime</depend>
+
+  <maintainer email="chinitaberrio@gmail.com">stephany</maintainer>
+  <license>BSD</license>
+
+</package>
