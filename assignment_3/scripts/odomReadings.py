@@ -7,12 +7,19 @@ import rospy
 import copy
 import numpy as np
 import open3d as o3d
-import laser_geometry
-import tf
-from nav_msgs.msg import Odometry
-from sensor_msgs.msg import LaserScan
+import laser_geometry as lg
+import tf                                       # /tf
+from nav_msgs.msg import Odometry               # /odom
+from sensor_msgs.msg import LaserScan, PointCloud2           # /scan
 from tf.msg import tfMessage
 from scipy.spatial.transform import Rotation
+
+#################################################################################
+# Global variables
+lp  = lg.LaserProjection()      # Laser Projection 
+
+# Publisher for publishing the point cloud
+pc_pub = rospy.Publisher("converted_pc", PointCloud2, queue_size=1)
     
 #################################################################################
 # Subscriber callback function for odom saves data
@@ -31,17 +38,28 @@ def odom_callback(data):
 #################################################################################
 # Subscriber callback function for the laser scan saves data
 def laser_callback(data):
+    print("laser callback (start)")
 
     # Global variables for odom data
-    global laser_ranges, laser_intensities
+    global laser_ranges, laser_intensities, pc2_new
 
     # Save the ranges and intensities from the odometry readings
     laser_ranges = data.ranges
     laser_intensities = data.intensities
 
+    # Convert LaserScan message to PointCloud2
+    pc2_new = lp.projectLaser(data)
 
-
+    # Publish the pointcloud
+    pc_pub.publish(pc2_new)
+    print("laser callback (end)")
     # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
+
+# Callback to make the new pointcloud the old one
+def pointcloud_callback(data):
+    global pc2_old
+    pc2_old = data
+    print("pointcloud callback")
 
 #################################################################################
 # Subscriber callback function for tf saves data
@@ -84,8 +102,19 @@ def icp_registration():
 
     # Get the source and target pointclouds from the LIDAR sensor - CHANGE TO GET SOURCE AT ONE 
     # INSTANCE AND TARGET LIKE 0.5 SECONDS LATER - SO CAN COMPARE TRANSFORMATION BETWEEN ROBOT MOVEMENT
-    source = [1, 2, 3]
-    target = [2, 3, 4]
+    source = pc2_old
+    target = pc2_new
+
+    # CURRENTLY THE SOURCE AND TARGET ARE SAME
+
+    print("print target (pc2_new) in icp reg fn")
+    raw_input()
+    print(target)
+
+    print("print source (pc2_old) in icp reg fn")
+    raw_input()
+    print(source)
+
 
     # Threshold for ICP correspondences
     threshold = 0.2
@@ -119,7 +148,7 @@ def icp_registration():
 def main():
     try:
         # Initialise a new node
-        rospy.init_node('odom_node')
+        rospy.init_node('odom_ICP_node')
 
         # Change the spin rate to 1 Hz which is ~1 second
         rate = rospy.Rate(1)
@@ -130,20 +159,27 @@ def main():
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
 
+            print("at loop start")
+            raw_input()
+
             # Subscribe to odometry, scan and tf topics
-            rospy.Subscriber("/odom", Odometry, odom_callback)
-            rospy.Subscriber("/scan", LaserScan, laser_callback)
-            rospy.Subscriber("/tf", tfMessage, tf_callback)
+            # rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
+            rospy.Subscriber("/scan", LaserScan, laser_callback, queue_size=1)
+            # rospy.Subscriber("/tf", tfMessage, tf_callback, queue_size=1)
 
             # Calls the ICP function only if two point clouds obtained
             if ICP_bool:
                 icp_registration()
+
+            # New point cloud becomes the old
+            rospy.Subscriber("converted_pc", PointCloud2, pointcloud_callback, queue_size=1)
             
             # Will have two point clouds from first iteration onwards
             ICP_bool = True
 
             # Sleep until next spin
             rate.sleep()
+
 
     except rospy.ROSInterruptException:
         # exit if there is any interruption from ROS
