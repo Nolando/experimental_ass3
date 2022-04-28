@@ -33,6 +33,12 @@ class Robot:
 
     def set_current(self,new):
         self.current = new
+
+    def set_new_measurement(self, measurement):
+        self.measurements.append(measurement)
+
+    def set_new_measurement_index(self, index):
+        self.landmarks.append(index)
     
     def get_index(self):
         # Index of state
