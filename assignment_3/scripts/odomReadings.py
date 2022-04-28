@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 
 # Subscribe to the odom topic to get the turtlebot odometry readings  
+from pickle import FALSE
+from tkinter import TRUE
 import rospy
 import copy
 import numpy as np
 import open3d as o3d
+import laser_geometry
+import tf
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from tf.msg import tfMessage
@@ -22,7 +26,7 @@ def odom_callback(data):
     odom_twist = data.twist
 
     # Test that the data is correctly being subscribed to
-    # print(data_pose)
+    # print(odom_twist)
 
 #################################################################################
 # Subscriber callback function for the laser scan saves data
@@ -31,10 +35,13 @@ def laser_callback(data):
     # Global variables for odom data
     global laser_ranges, laser_intensities
 
-    # Save the data from the odometry readings
+    # Save the ranges and intensities from the odometry readings
     laser_ranges = data.ranges
     laser_intensities = data.intensities
 
+
+
+    # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
 
 #################################################################################
 # Subscriber callback function for tf saves data
@@ -44,7 +51,7 @@ def tf_callback(data):
     global tf_transform
 
     # Save the data from the odometry readings
-    tf_transform = data.transforms.transform
+    tf_transform = data.transforms
 
     # Can see frame relationship between Odom and laser here
     # IN TERMINAL run: rostopic echo tf --> to see the frames
@@ -117,6 +124,9 @@ def main():
         # Change the spin rate to 1 Hz which is ~1 second
         rate = rospy.Rate(1)
 
+        # Can't estimate with ICP on first loop iteration
+        ICP_bool = False
+
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
 
@@ -125,9 +135,13 @@ def main():
             rospy.Subscriber("/scan", LaserScan, laser_callback)
             rospy.Subscriber("/tf", tfMessage, tf_callback)
 
-            # Calls the ICP function
-            icp_registration()
+            # Calls the ICP function only if two point clouds obtained
+            if ICP_bool:
+                icp_registration()
             
+            # Will have two point clouds from first iteration onwards
+            ICP_bool = True
+
             # Sleep until next spin
             rate.sleep()
 
