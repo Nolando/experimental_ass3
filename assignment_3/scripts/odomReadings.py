@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 # Subscribe to the odom topic to get the turtlebot odometry readings  
-from matplotlib.pyplot import sca
 import rospy
 import copy
 import numpy as np
@@ -9,6 +8,7 @@ import open3d as o3d
 import laser_geometry as lg
 import tf                                       # /tf
 from nav_msgs.msg import Odometry               # /odom
+import matplotlib.pyplot as plt
 import open3d as o3d                
 from sensor_msgs.msg import LaserScan, PointCloud2           # /scan
 from tf.msg import tfMessage
@@ -34,8 +34,15 @@ def odom_callback(data):
     odom_pose = data.pose
     odom_twist = data.twist
 
+    #print(type(odom_pose))
+    #plt.plot(odom_pose.pose.position.x, odom_pose.pose.position.y)
+    #plt.show()
     # Test that the data is correctly being subscribed to
-    # print(odom_twist)
+    #print(odom_pose)
+
+    # Add the current x and y pose positions to the odom lists
+    odomX.append(odom_pose.pose.position.x)
+    odomY.append(odom_pose.pose.position.y)
 
 #################################################################################
 # Subscriber callback function for the laser scan saves data
@@ -95,7 +102,7 @@ def draw_registration_result(source, target, transformation):
     source_temp.paint_uniform_color([1, 0.706, 0])
     target_temp.paint_uniform_color([0, 0.651, 0.929])
     source_temp.transform(transformation)
-    o3d.visualization.draw_geometries([source_temp, target_temp])
+    #o3d.visualization.draw_geometries([source_temp, target_temp])
 
 #################################################################################
 # Function sourced from Open3D Tutorials - calculates the resultant transformation
@@ -133,9 +140,9 @@ def icp_registration():
     # Calculate transformation
     print("\nTransformation from point-to-point ICP")
     reg_p2p = o3d.registration.registration_icp(
-        source, target, threshold, init_trans,
-        o3d.registration.TransformationEstimationPointToPoint(),
-        o3d.registration.ICPConvergenceCriteria(max_iteration=20000))
+       source, target, threshold, init_trans,
+       o3d.registration.TransformationEstimationPointToPoint(),
+       o3d.registration.ICPConvergenceCriteria(max_iteration=20000))
     print(reg_p2p)
     print("\nTransformation is:")
     print(reg_p2p.transformation)
@@ -143,6 +150,13 @@ def icp_registration():
 
 #################################################################################
 def main():
+
+    # Global x and y pose list variables
+    global odomX
+    global odomY
+    odomX = []
+    odomY = []
+
     try:
         # Initialise a new node
         rospy.init_node('odom_ICP_node')
@@ -157,7 +171,7 @@ def main():
         while not rospy.is_shutdown():
 
             # Subscribe to odometry, scan and tf topics
-            # rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
+            rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
             rospy.Subscriber("/scan", LaserScan, laser_callback, queue_size=1)
             # rospy.Subscriber("/tf", tfMessage, tf_callback, queue_size=1)
 
@@ -173,6 +187,13 @@ def main():
 
             # Sleep until next spin
             rate.sleep()
+
+        # Plot the odometry trajectory 
+        plt.plot(odomX, odomY)
+        plt.title("Odometry Readings Trajectory")
+        plt.xlabel("X pose position")
+        plt.ylabel("Y pose position")
+        plt.show()
 
 
     except rospy.ROSInterruptException:
