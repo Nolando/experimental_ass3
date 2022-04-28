@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 # Subscribe to the odom topic to get the turtlebot odometry readings  
-from pickle import FALSE
-from tkinter import TRUE
+from matplotlib.pyplot import sca
 import rospy
 import copy
 import numpy as np
@@ -10,6 +9,7 @@ import open3d as o3d
 import laser_geometry as lg
 import tf                                       # /tf
 from nav_msgs.msg import Odometry               # /odom
+import open3d as o3d                
 from sensor_msgs.msg import LaserScan, PointCloud2           # /scan
 from tf.msg import tfMessage
 from scipy.spatial.transform import Rotation
@@ -20,6 +20,8 @@ lp  = lg.LaserProjection()      # Laser Projection
 
 # Publisher for publishing the point cloud
 pc_pub = rospy.Publisher("converted_pc", PointCloud2, queue_size=1)
+
+# scan_data = np.array([])
     
 #################################################################################
 # Subscriber callback function for odom saves data
@@ -38,7 +40,6 @@ def odom_callback(data):
 #################################################################################
 # Subscriber callback function for the laser scan saves data
 def laser_callback(data):
-    print("laser callback (start)")
 
     # Global variables for odom data
     global laser_ranges, laser_intensities, pc2_new
@@ -50,16 +51,18 @@ def laser_callback(data):
     # Convert LaserScan message to PointCloud2
     pc2_new = lp.projectLaser(data)
 
+    # scan_data = np.array(data.intensities)
+    # o3d_pc_new = o3d.utility.IntVector(scan_data)
+    # print(o3d_pc_new)
+
     # Publish the pointcloud
     pc_pub.publish(pc2_new)
-    print("laser callback (end)")
     # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
 
 # Callback to make the new pointcloud the old one
 def pointcloud_callback(data):
     global pc2_old
     pc2_old = data
-    print("pointcloud callback")
 
 #################################################################################
 # Subscriber callback function for tf saves data
@@ -78,12 +81,11 @@ def tf_callback(data):
 #################################################################################
 # Function converts the input 3x3 rotation matrix into quaternions
 def rotation_to_quaternion(rot_matrix):
-
+    
+    # Note: scipy can also convert euler angles, rotation vectors
     # Call the scipy function to convert to quaternions
     quats = Rotation.from_matrix(rot_matrix)
     return quats
-
-    # Note: scipy can also convert euler angles, rotation vectors
 
 #################################################################################
 # Function sourced from Open3D Tutorials - visualises the alignment of the points
@@ -106,15 +108,10 @@ def icp_registration():
     target = pc2_new
 
     # CURRENTLY THE SOURCE AND TARGET ARE SAME
-
-    print("print target (pc2_new) in icp reg fn")
-    raw_input()
-    print(target)
-
-    print("print source (pc2_old) in icp reg fn")
-    raw_input()
-    print(source)
-
+    # print("print target (pc2_new) in icp reg fn")
+    # print(target)
+    # print("print source (pc2_old) in icp reg fn")
+    # print(source)
 
     # Threshold for ICP correspondences
     threshold = 0.2
@@ -123,15 +120,15 @@ def icp_registration():
     init_trans = np.identity(4)
 
     # Wait for user enter to visualise the points with initial estimate
-    print("\nPress Enter to visualise points")
-    raw_input()
-    draw_registration_result(source, target, init_trans)
+    # draw_registration_result(source, target, init_trans)
 
     # Evaluate ICP performance metrics - fitness, inlier RMSE and set size
     print("Evaluation of initial alignment")
+    raw_input()
     evaluation = o3d.registration.evaluate_registration(
         source, target, threshold, init_trans)
     print(evaluation)
+
 
     # Calculate transformation
     print("\nTransformation from point-to-point ICP")
@@ -142,7 +139,7 @@ def icp_registration():
     print(reg_p2p)
     print("\nTransformation is:")
     print(reg_p2p.transformation)
-    draw_registration_result(source, target, reg_p2p.transformation)
+    # draw_registration_result(source, target, reg_p2p.transformation)
 
 #################################################################################
 def main():
@@ -158,9 +155,6 @@ def main():
 
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
-
-            print("at loop start")
-            raw_input()
 
             # Subscribe to odometry, scan and tf topics
             # rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
