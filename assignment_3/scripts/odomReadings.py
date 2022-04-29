@@ -9,7 +9,6 @@ import laser_geometry as lg
 import tf                                       # /tf
 from nav_msgs.msg import Odometry               # /odom
 import matplotlib.pyplot as plt
-import open3d as o3d                
 from sensor_msgs.msg import LaserScan, PointCloud2           # /scan
 from tf.msg import tfMessage
 from scipy.spatial.transform import Rotation
@@ -49,27 +48,50 @@ def odom_callback(data):
 def laser_callback(data):
 
     # Global variables for odom data
-    global laser_ranges, laser_intensities, pc2_new
+    global laser_ranges, laser_intensities
 
     # Save the ranges and intensities from the odometry readings
-    laser_ranges = data.ranges
-    laser_intensities = data.intensities
+    laser_ranges = np.array([data.ranges], np.float64)
+    laser_intensities = np.array([data.intensities], np.float64)
 
     # Convert LaserScan message to PointCloud2
-    pc2_new = lp.projectLaser(data)
+    # pc2_new = lp.projectLaser(data)
 
-    # scan_data = np.array(data.intensities)
-    # o3d_pc_new = o3d.utility.IntVector(scan_data)
-    # print(o3d_pc_new)
+    # Convert LaserScan to numpy array and then to open3d type
+    # data_ranges = np.float64(data.ranges)
+    # data_intensities = np.float64(data.intensities)
+
+    # Empty row of zeroes for Vector3dVector
+    zero_row = np.zeros(laser_ranges.size)
+
+    # Create the n x 3 matrix for open3d type conversion
+    new_data = np.vstack([laser_ranges, laser_intensities, zero_row])
+    new_data = np.transpose(new_data)
+    # print(new_data)
+
+    # Convert the numpy array to open3d type
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(new_data)
+    print(np.asarray(pcd.points))
+
+    ###################
+    # FROM HERE I AM TRYING TO HAVE SEPERATE O3D CLOUDS FOR RANGES AND INTENSITIES
+    # test = np.transpose(laser_intensities)
+    # print(test.size)
+    # pcd2 = o3d.geometry.PointCloud()
+    # pcd2.points = o3d.utility.IntVector(laser_intensities)
+    
+
+
 
     # Publish the pointcloud
-    pc_pub.publish(pc2_new)
+    # pc_pub.publish(new_data)
     # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
 
 # Callback to make the new pointcloud the old one
-def pointcloud_callback(data):
-    global pc2_old
-    pc2_old = data
+# def pointcloud_callback(data):
+#     global pc2_old
+#     pc2_old = data
 
 #################################################################################
 # Subscriber callback function for tf saves data
@@ -111,8 +133,8 @@ def icp_registration():
 
     # Get the source and target pointclouds from the LIDAR sensor - CHANGE TO GET SOURCE AT ONE 
     # INSTANCE AND TARGET LIKE 0.5 SECONDS LATER - SO CAN COMPARE TRANSFORMATION BETWEEN ROBOT MOVEMENT
-    source = pc2_old
-    target = pc2_new
+    # source = pc2_old
+    # target = pc2_new
 
     # CURRENTLY THE SOURCE AND TARGET ARE SAME
     # print("print target (pc2_new) in icp reg fn")
@@ -176,11 +198,11 @@ def main():
             # rospy.Subscriber("/tf", tfMessage, tf_callback, queue_size=1)
 
             # Calls the ICP function only if two point clouds obtained
-            if ICP_bool:
-                icp_registration()
+            # if ICP_bool:
+                # icp_registration()
 
             # New point cloud becomes the old
-            rospy.Subscriber("converted_pc", PointCloud2, pointcloud_callback, queue_size=1)
+            # rospy.Subscriber("converted_pc", PointCloud2, pointcloud_callback, queue_size=1)
             
             # Will have two point clouds from first iteration onwards
             ICP_bool = True
