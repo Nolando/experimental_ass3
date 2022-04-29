@@ -51,6 +51,40 @@ def Relative2AbsoluteXY(robot_pose_abs, landmark_position_rel):
     return landmark_abs[:2], H1, H2
 
 
+def Absolute2RelativePose(robot_pose_1,robot_pose_2):
+
+    '''
+    Returns the relative position of pose_2 in terms of pose_1.
+    '''
+    d_vec = np.zeros((3,1))
+
+    d_vec[:2] = (robot_pose_2[:2]-robot_pose_1[:2]).reshape(2,1)
+    d_vec[-1] = pi2pi(robot_pose_2[2]-robot_pose_1[2])
+
+    ori = -robot_pose_1[2]
+
+    R = np.array([[np.cos(ori), -np.sin(ori),0],
+                    [np.sin(ori),np.cos(ori),0],
+                    [0,0,1]])
+
+    rel_pose = np.matmul(R,d_vec)
+
+    c1 = np.cos(robot_pose_1[2])
+    s1 = np.sin(robot_pose_1[2])
+
+    # Jacobian of motion wrt to X @ t-1
+    H1 = [[-c1, -s1, -s1*d_vec[0]+c1*d_vec[1]],
+            [s1, -c1, -c1*d_vec[0]-s1*d_vec[1]],
+            [0, 0, -1]]
+    
+    # Jacobian of motion wrt X @ t
+    H2 = [[c1, s1, 0],
+            [-s1, c1, 0],
+            [0, 0, 1]]
+    
+    return rel_pose, np.asarray(H1), np.asarray(H2)
+
+
 def Relative2AbsolutePose(robot_pose_abs, u_rel):
     """
     Calculates the new pose of the robot given its current pose in the
@@ -127,7 +161,7 @@ def Absolute2RelativeXY(robot_pose_abs, landmark_position_abs):
          [np.sin(-theta1), np.cos(-theta1), 0],
          [0, 0, 1]]
 
-    landmark_position_rel = np.dot(R, diff)
+    landmark_position_rel = np.matmul(R, diff)
 
     # Calculate Jacobian of the relative landmark position wrt. the robot pose,
     # i.e. [x1, y1, theta1]
@@ -139,7 +173,7 @@ def Absolute2RelativeXY(robot_pose_abs, landmark_position_abs):
     H2 = [[np.cos(theta1), np.sin(theta1)],
           [-np.sin(theta1), np.cos(theta1)]]
 
-    return np.array([[landmark_position_rel[0]], [landmark_position_rel[1]]]), H1, H2
+    return np.array([[landmark_position_rel[0]], [landmark_position_rel[1]]]), np.array(H1), np.array(H2)
 
 
 def RelativeLandmarkPositions(landmark_position_abs, next_landmark_position_abs):

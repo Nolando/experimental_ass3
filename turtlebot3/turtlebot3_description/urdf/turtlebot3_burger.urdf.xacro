@@ -162,9 +162,4 @@
     </inertial>
   </link>
 
-  <xacro:include filename="$(find turtlebot3_description)/urdf/_d435.urdf.xacro" />
-  <xacro:sensor_d435 parent="base_footprint">
-    <origin xyz="0.0 0.0 0.064" rpy="0.0 0.0 0.0"/>
-  </xacro:sensor_d435>
-
 </robot>
