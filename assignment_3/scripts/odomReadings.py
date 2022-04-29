@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# Machine Unlearning
 
 # Subscribe to the odom topic to get the turtlebot odometry readings  
 import rospy
@@ -60,7 +61,7 @@ def laser_callback(data):
 
     # Convert the numpy array to open3d type
     new_pcd.points = o3d.utility.Vector3dVector(new_data)
-    print(type(new_pcd))
+    # print(type(new_pcd))
 
     # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
 
@@ -104,41 +105,48 @@ def icp_registration():
 
     # Get the source and target pointclouds from the LIDAR sensor - CHANGE TO GET SOURCE AT ONE 
     # INSTANCE AND TARGET LIKE 0.5 SECONDS LATER - SO CAN COMPARE TRANSFORMATION BETWEEN ROBOT MOVEMENT
-    # source = pc2_old
-    # target = pc2_new
+    source = old_pcd
+    target = new_pcd
 
-    # CURRENTLY THE SOURCE AND TARGET ARE SAME
-    # print("print target (pc2_new) in icp reg fn")
-    # print(target)
-    # print("print source (pc2_old) in icp reg fn")
-    # print(source)
+    # Check that the pointclouds are different - have obtained new points
+    if source.points is not target.points:
+        print("lift")
 
-    # Threshold for ICP correspondences
-    threshold = 0.2
+        # CURRENTLY THE SOURCE AND TARGET ARE SAME
+        # print("print target (pc2_new) in icp reg fn")
+        # print(target)
+        # print("print source (pc2_old) in icp reg fn")
+        # print(source)
 
-    # Initial transformation is estimated as the identiy matrix
-    init_trans = np.identity(4)
+        # Threshold for ICP correspondences
+        threshold = 0.2
 
-    # Wait for user enter to visualise the points with initial estimate
-    # draw_registration_result(source, target, init_trans)
+        # Initial transformation is estimated as the identiy matrix
+        init_trans = np.identity(4)
 
-    # Evaluate ICP performance metrics - fitness, inlier RMSE and set size
-    print("Evaluation of initial alignment")
-    raw_input()
-    evaluation = o3d.registration.evaluate_registration(
-        source, target, threshold, init_trans)
-    print(evaluation)
+        # Wait for user enter to visualise the points with initial estimate
+        # draw_registration_result(source, target, init_trans)
 
-    # Calculate transformation
-    print("\nTransformation from point-to-point ICP")
-    reg_p2p = o3d.registration.registration_icp(
-       source, target, threshold, init_trans,
-       o3d.registration.TransformationEstimationPointToPoint(),
-       o3d.registration.ICPConvergenceCriteria(max_iteration=20000))
-    print(reg_p2p)
-    print("\nTransformation is:")
-    print(reg_p2p.transformation)
-    # draw_registration_result(source, target, reg_p2p.transformation)
+        # Evaluate ICP performance metrics - fitness, inlier RMSE and set size
+        print("Evaluation of initial alignment")
+        raw_input()
+        evaluation = o3d.registration.evaluate_registration(
+            source, target, threshold, init_trans)
+        print(evaluation)
+
+        # Calculate transformation
+        print("\nTransformation from point-to-point ICP")
+        reg_p2p = o3d.registration.registration_icp(
+        source, target, threshold, init_trans,
+        o3d.registration.TransformationEstimationPointToPoint(),
+        o3d.registration.ICPConvergenceCriteria(max_iteration=20000))
+        print(reg_p2p)
+        print("\nTransformation is:")
+        print(reg_p2p.transformation)
+        # draw_registration_result(source, target, reg_p2p.transformation)
+        
+    else:
+        print("SAME clouds nah blud")
 
 #################################################################################
 def main():
@@ -162,6 +170,8 @@ def main():
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
 
+            print("loop city fam")
+
             # Subscribe to odometry, scan and tf topics
             rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
             rospy.Subscriber("/scan", LaserScan, laser_callback, queue_size=1)
@@ -169,16 +179,14 @@ def main():
 
             # Calls the ICP function only if two point clouds obtained
             if ICP_bool:
-                # icp_registration()
-
                 print("in if statement")
-
-
-            # New point cloud becomes the old
-            # rospy.Subscriber("converted_pc", PointCloud2, pointcloud_callback, queue_size=1)
-
+                icp_registration()
+            
             # Will have two point clouds after end of first iter
             ICP_bool = True
+
+            # Update new to old point cloud
+            old_pcd = new_pcd
 
             # Sleep until next spin
             rate.sleep()
