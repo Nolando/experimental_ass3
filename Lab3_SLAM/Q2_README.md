@@ -83,21 +83,21 @@ roscore
 ```
 2. Terminal 2 - Launch the simulated environment in gazebo
 ```bash
-roslaunch turtlebot3_gazebo turtlebot3_stage2.launch
+roslaunch turtlebot3_gazebo turtlebot3_stage_2.launch
 ```
 3. Terminal 3 - Launch remote control
 ```bash
-roslaunch turtlebot3_teleop turtlebot3 teleop_key.launch
+roslaunch turtlebot3_teleop turtlebot3_teleop_key.launch
 ```
 4. Terminal 4 - Launch the landmark publisher
 ```bash
-python src/Lab3_SLAM/Landmark_publisher.py
+python src/experimental_ass3/Lab3_SLAM/Landmark_publisher.py
 ```
  This will publish the landmarks from the enronment so that your SLAM algorithm can see them.
 
 5. Terminal 5 - Launch the SLAM algorithm
 ```bash
-python src/Lab3_SLAM/LandmarkSLAM_students.py
+python src/experimental_ass3/Lab3_SLAM/LandmarkSLAM_students.py
 ```
 
 Makes sure you have sourced your setup.bash script and export the turtlebot model as burger.
