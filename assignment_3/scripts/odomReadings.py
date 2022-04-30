@@ -2,6 +2,7 @@
 # Machine Unlearning
 
 # Subscribe to the odom topic to get the turtlebot odometry readings  
+from hashlib import new
 import rospy
 import copy
 import numpy as np
@@ -45,12 +46,14 @@ def odom_callback(data):
 # Subscriber callback function for the laser scan saves data
 def laser_callback(data):
 
+    # Update old pointcloud variable - NEED TO COPY OR ELSE IS PYTHON REFERENCES
+    old_pcd = copy.deepcopy(new_pcd)
+
     # Global variables for odom data
-    global laser_ranges, laser_intensities
+    global laser_ranges
 
     # Save the ranges and intensities from the odometry readings
     laser_ranges = np.array([data.ranges], np.float64)
-    laser_intensities = np.array([data.intensities], np.float64)
 
     # Empty row of zeroes for Vector3dVector
     zero_row = np.zeros(laser_ranges.size)
@@ -61,7 +64,12 @@ def laser_callback(data):
 
     # Convert the numpy array to open3d type
     new_pcd.points = o3d.utility.Vector3dVector(new_data)
-    # print(type(new_pcd))
+
+    # Check that the pointclouds are different
+    if old_pcd.points != new_pcd.points and np.asarray(old_pcd.points).size != 0:
+        
+        # Conduct ICP registration
+        icp_registration(old_pcd, new_pcd)
 
     # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
 
@@ -101,23 +109,26 @@ def draw_registration_result(source, target, transformation):
 #################################################################################
 # Function sourced from Open3D Tutorials - calculates the resultant transformation
 # between point clouds using point to point ICP registration algorithm
-def icp_registration():
+# Source point cloud is the old, target point cloud is the new
+def icp_registration(source, target):
 
     # Get the source and target pointclouds from the LIDAR sensor - CHANGE TO GET SOURCE AT ONE 
     # INSTANCE AND TARGET LIKE 0.5 SECONDS LATER - SO CAN COMPARE TRANSFORMATION BETWEEN ROBOT MOVEMENT
-    source = old_pcd
-    target = new_pcd
+    print("\n\nOLD")
+    print(np.asarray(source.points))
+    print("NEW")
+    print(np.asarray(target.points))
 
     # Check that the pointclouds are different - have obtained new points
-    if source.points is not target.points:
-        print("lift")
+    if source.points != target.points and np.asarray(source.points).size != 0:
 
         # CURRENTLY THE SOURCE AND TARGET ARE SAME
-        # print("print target (pc2_new) in icp reg fn")
-        # print(target)
-        # print("print source (pc2_old) in icp reg fn")
-        # print(source)
-
+        print("print source size")
+        print(source.points)
+        print("\nprint target size")
+        print(np.asarray(target.points).size)
+        # THIS IS NOT UPDATING TOO WELL - MIGHT NEED A PUBLISHER????
+        
         # Threshold for ICP correspondences
         threshold = 0.2
 
@@ -144,9 +155,11 @@ def icp_registration():
         print("\nTransformation is:")
         print(reg_p2p.transformation)
         # draw_registration_result(source, target, reg_p2p.transformation)
-        
+
     else:
-        print("SAME clouds nah blud")
+        print("SAME clouds or empty cloud, nah blud")
+        # print(np.asarray(source.points))
+        # print(np.asarray(target.points))
 
 #################################################################################
 def main():
@@ -170,7 +183,7 @@ def main():
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
 
-            print("loop city fam")
+            print("\n-------------------------------\nloop city fam")
 
             # Subscribe to odometry, scan and tf topics
             rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
@@ -178,14 +191,17 @@ def main():
             # rospy.Subscriber("/tf", tfMessage, tf_callback, queue_size=1)
 
             # Calls the ICP function only if two point clouds obtained
-            if ICP_bool:
-                print("in if statement")
-                icp_registration()
+            # if ICP_bool:
+                # print("in if statement")
+                # icp_registration()
             
             # Will have two point clouds after end of first iter
             ICP_bool = True
 
             # Update new to old point cloud
+            ########################################################################
+            #   NEED TO PUBLISH THE OLD_PCD VARIABLE SINCE SCOPE ISSUES
+            ########################################################################
             old_pcd = new_pcd
 
             # Sleep until next spin
