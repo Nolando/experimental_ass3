@@ -2,7 +2,6 @@
 # Machine Unlearning
 
 # Subscribe to the odom topic to get the turtlebot odometry readings  
-from hashlib import new
 import rospy
 import copy
 import numpy as np
@@ -55,7 +54,7 @@ def laser_callback(data):
     # Save the ranges and intensities from the odometry readings
     laser_ranges = np.array([data.ranges], np.float64)
 
-    # Empty row of zeroes for Vector3dVector
+    # Empty row of zeroes for Vector3dVector - TEST AGAIN - this seems to work better in calculating transformation
     zero_row = np.zeros(laser_ranges.size)
 
     # Create the n x 3 matrix for open3d type conversion
@@ -64,6 +63,9 @@ def laser_callback(data):
 
     # Convert the numpy array to open3d type
     new_pcd.points = o3d.utility.Vector3dVector(new_data)
+
+    # print(np.asarray(old_pcd.points))
+    # print(np.asarray(new_pcd.points))
 
     # Check that the pointclouds are different
     if old_pcd.points != new_pcd.points and np.asarray(old_pcd.points).size != 0:
@@ -104,62 +106,30 @@ def draw_registration_result(source, target, transformation):
     source_temp.paint_uniform_color([1, 0.706, 0])
     target_temp.paint_uniform_color([0, 0.651, 0.929])
     source_temp.transform(transformation)
-    #o3d.visualization.draw_geometries([source_temp, target_temp])
+    o3d.visualization.draw_geometries([source_temp, target_temp])
 
 #################################################################################
 # Function sourced from Open3D Tutorials - calculates the resultant transformation
 # between point clouds using point to point ICP registration algorithm
 # Source point cloud is the old, target point cloud is the new
 def icp_registration(source, target):
-
-    # Get the source and target pointclouds from the LIDAR sensor - CHANGE TO GET SOURCE AT ONE 
-    # INSTANCE AND TARGET LIKE 0.5 SECONDS LATER - SO CAN COMPARE TRANSFORMATION BETWEEN ROBOT MOVEMENT
-    print("\n\nOLD")
-    print(np.asarray(source.points))
-    print("NEW")
-    print(np.asarray(target.points))
-
-    # Check that the pointclouds are different - have obtained new points
-    if source.points != target.points and np.asarray(source.points).size != 0:
-
-        # CURRENTLY THE SOURCE AND TARGET ARE SAME
-        print("print source size")
-        print(source.points)
-        print("\nprint target size")
-        print(np.asarray(target.points).size)
-        # THIS IS NOT UPDATING TOO WELL - MIGHT NEED A PUBLISHER????
         
-        # Threshold for ICP correspondences
-        threshold = 0.2
+    # Threshold for ICP correspondences
+    threshold = 0.02
 
-        # Initial transformation is estimated as the identiy matrix
-        init_trans = np.identity(4)
+    # Initial transformation is estimated as the identiy matrix
+    init_trans = np.identity(4)
 
-        # Wait for user enter to visualise the points with initial estimate
-        # draw_registration_result(source, target, init_trans)
-
-        # Evaluate ICP performance metrics - fitness, inlier RMSE and set size
-        print("Evaluation of initial alignment")
-        raw_input()
-        evaluation = o3d.registration.evaluate_registration(
-            source, target, threshold, init_trans)
-        print(evaluation)
-
-        # Calculate transformation
-        print("\nTransformation from point-to-point ICP")
-        reg_p2p = o3d.registration.registration_icp(
-        source, target, threshold, init_trans,
-        o3d.registration.TransformationEstimationPointToPoint(),
-        o3d.registration.ICPConvergenceCriteria(max_iteration=20000))
-        print(reg_p2p)
-        print("\nTransformation is:")
-        print(reg_p2p.transformation)
-        # draw_registration_result(source, target, reg_p2p.transformation)
-
-    else:
-        print("SAME clouds or empty cloud, nah blud")
-        # print(np.asarray(source.points))
-        # print(np.asarray(target.points))
+    # Calculate transformation
+    print("\n\n-----------------------\nTransformation from point-to-point ICP")
+    reg_p2p = o3d.registration.registration_icp(
+    source, target, threshold, init_trans,
+    o3d.registration.TransformationEstimationPointToPoint(),
+    o3d.registration.ICPConvergenceCriteria(max_iteration=10000))
+    print(reg_p2p)
+    print("\nTransformation is:")
+    print(reg_p2p.transformation)
+    # draw_registration_result(source, target, reg_p2p.transformation)
 
 #################################################################################
 def main():
@@ -189,20 +159,6 @@ def main():
             rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
             rospy.Subscriber("/scan", LaserScan, laser_callback, queue_size=1)
             # rospy.Subscriber("/tf", tfMessage, tf_callback, queue_size=1)
-
-            # Calls the ICP function only if two point clouds obtained
-            # if ICP_bool:
-                # print("in if statement")
-                # icp_registration()
-            
-            # Will have two point clouds after end of first iter
-            ICP_bool = True
-
-            # Update new to old point cloud
-            ########################################################################
-            #   NEED TO PUBLISH THE OLD_PCD VARIABLE SINCE SCOPE ISSUES
-            ########################################################################
-            old_pcd = new_pcd
 
             # Sleep until next spin
             rate.sleep()
