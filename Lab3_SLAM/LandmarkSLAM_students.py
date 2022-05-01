@@ -64,7 +64,7 @@ class LeastSquaresSolver(object):
                 
         self.states = states
         self.landmarks = landmarks
-
+        robot = Robot()
         '''
         A matrix:
         Num columns - n_states * 3 (for x, y, phi) + n_landmarks * 2 (for x,y)
@@ -182,8 +182,11 @@ class LeastSquaresSolver(object):
 
 
     def construct_system(self,state_dim,landmark_dim, measurement_dim):
-        
-        
+        robot = Robot
+        landmark = Landmark
+        num_state = state_dim/3
+        num_landmarks = landmark_dim/2
+        num_measurement = measurement_dim/2
         # Constructing a linear system:
         #       L(delta) = ||b||^2 + delta^T A^T b + 1/2 delta^T A^T A delta
         #       A = Sigma ^(-T\2) J         weighted jacobians stacked in a matrix
@@ -194,7 +197,7 @@ class LeastSquaresSolver(object):
         Num columns - n_states * 3 (for x, y, phi) + n_landmarks * 2 (for x,y)
         Num rows - n_states * 3 (for x, y, phi) + n_measurements * 3
         '''
-
+        prior = np.zeros((3,3))
         
         
         # TODO
@@ -205,7 +208,34 @@ class LeastSquaresSolver(object):
         self.b = ...
 
         # Construct the top portion of the A matrix, you will need to go through your robot poses carefully.
-        
+        #init_robot_pose = robot.get_initial()
+        #first_robot_pose = robot.predict_state(init_robot_pose)
+
+        init_land = landmark.get_initial()
+
+        #pred_motion, F_k, G_k = geometry.Absolute2RelativePose(init_robot, robot.)
+
+        for i in range(num_state):
+            
+            next_pose = robot.predict_state(robot.get_current)
+            curr_odo = robot.get_odo
+            pred_motion, F_k, G_k = geometry.Absolute2RelativePose(robot.get_current, next_pose)
+
+            if i == robot.get_index:
+                self.A[i,i] = np.dot(G_k, robot.get_covariance_processed)
+            elif i+1 == robot.get_index:
+                self.A[i+1,i] = np.dot(F_k, robot.get_covariance_processed)
+            motion_residual = pred_motion - curr_odo
+            pred_measure, H_k, J_j = landmark.landmark_jacobs(robot.get_current)
+            measure_residual = pred_measure - init_land
+
+            if i == landmark.get_index:
+                
+
+
+
+        # Measurement residuals = absolute2rel land - landmark measurement
+        # Motion residuals = absolute2rel pose - odometry
         #for i in range(num_states):
         #curr = Robot.get_current()
 
@@ -252,8 +282,6 @@ class LeastSquaresSolver(object):
 
 
 class SLAM():
-
-
     # Must have __init__(self) function for a class, similar to a C++ class constructor.
     def __init__(self, mode):
         
