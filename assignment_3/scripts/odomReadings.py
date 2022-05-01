@@ -11,9 +11,8 @@ import geometry_msgs.msg
 from nav_msgs.msg import Odometry               # /odom
 import matplotlib.pyplot as plt
 from sensor_msgs.msg import LaserScan           # /scan
-from tf.msg import tfMessage
-from scipy.spatial.transform import Rotation
-
+from rospy.numpy_msg import numpy_msg
+from rospy_tutorials.msg import Floats
 
 #################################################################################
 # Subscriber callback function for odom saves data
@@ -25,12 +24,6 @@ def odom_callback(data):
     # Save the data from the odometry readings
     odom_pose = data.pose
     odom_twist = data.twist
-
-    #print(type(odom_pose))
-    #plt.plot(odom_pose.pose.position.x, odom_pose.pose.position.y)
-    #plt.show()
-    # Test that the data is correctly being subscribed to
-    #print(odom_pose)
 
     # Add the current x and y pose positions to the odom lists
     odomX.append(odom_pose.pose.position.x)
@@ -92,8 +85,8 @@ def laser_callback(data):
     # Update old pointcloud variable - NEED TO COPY OR ELSE IS PYTHON REFERENCES
     old_pcd = copy.deepcopy(new_pcd)
 
-    # Save the ranges and intensities from the odometry readings
-    laser_ranges = np.array([data.ranges], np.float64)          # size: 1 x 360
+    # Save the ranges and intensities from the odometry readings - FIDDLE AROUND WITH FLOAT32 OR FLOAT64
+    laser_ranges = np.array([data.ranges], np.float32)          # size: 1 x 360
 
     # If the variable is currently empty, will need to set new_data first
     if new_data.size < 360:
@@ -124,6 +117,21 @@ def laser_callback(data):
         new_data = np.array([])
 
     # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
+
+#################################################################################
+# Subscriber for the trasnformation to calcualte the overall resultant transform 
+# and get the x and y trajectory
+def transformation_callback(data):
+
+    # Convert data into a numpy matrix
+    transformation_matrix = np.array(data)
+    # transformation_matrix = np.reshape(np.asarray(data), (4, 4))
+
+    # TO DO: SPLIT THIS INTO ELEMENTS AS IT IS ONLY SAYING THAT IT IS 1X1 VECTOR WITH ALL POINTS
+    print("\n\n------------------")
+    # print(np.asarray(data))
+    transformation_matrix = np.array(list(map(np.float, transformation_matrix)))
+    print(transformation_matrix)
 
 #################################################################################
 # Convert quaternion into a rotation matrix
@@ -177,13 +185,15 @@ def draw_registration_result(source, target, transformation):
     source_temp.paint_uniform_color([1, 0.706, 0])
     target_temp.paint_uniform_color([0, 0.651, 0.929])
     source_temp.transform(transformation)
-    o3d.visualization.draw_geometries([source_temp, target_temp])
+    # o3d.visualization.draw_geometries([source_temp, target_temp])
 
 #################################################################################
 # Function sourced from Open3D Tutorials - calculates the resultant transformation
 # between point clouds using point to point ICP registration algorithm
 # Source point cloud is the old, target point cloud is the new
 def icp_registration(source, target):
+
+    global reg_p2p
         
     # Threshold for ICP correspondences
     threshold = 0.02
@@ -192,19 +202,24 @@ def icp_registration(source, target):
     init_trans = np.identity(4)
 
     # Calculate transformation
-    # print("\n\n-----------------------\nTransformation from point-to-point ICP")
     reg_p2p = o3d.registration.registration_icp(
         source, target, threshold, init_trans,
         o3d.registration.TransformationEstimationPointToPoint(),
         o3d.registration.ICPConvergenceCriteria(max_iteration=10000))
-    print(reg_p2p.transformation)     # type: numpy.ndarray
+    icp_transformation = reg_p2p.transformation.flatten()
+    
     # draw_registration_result(source, target, reg_p2p.transformation)
+
+    # Publish the ICP transformation as an array
+    flat_array = np.array(icp_transformation, dtype=np.float32)
+    icp_pub.publish(flat_array)
+    
 
 #################################################################################
 def main():
 
     # Global vairables
-    global odomX, odomY, new_data, new_pcd, old_pcd
+    global odomX, odomY, new_data, new_pcd, old_pcd, icp_pub, transformation_matrix
     odomX = []
     odomY = []
     new_data = np.array([])
@@ -212,6 +227,9 @@ def main():
     # Open3d point clouds
     new_pcd = o3d.geometry.PointCloud()
     old_pcd = o3d.geometry.PointCloud()
+
+    # Publisher for publishing the point cloud
+    icp_pub = rospy.Publisher("ICP_transformation", numpy_msg(Floats), queue_size=1)
 
     try:
         # Initialise a new node
@@ -226,10 +244,8 @@ def main():
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
 
-            # print("\n-------------------------------\nloop city fam")
-
             # Subscribe to odometry, scan topics
-            # rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
+            rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
             rospy.Subscriber("/scan", LaserScan, laser_callback, queue_size=1)
 
             # Subscribe to the translation (linear transformation in x, y, z) 
@@ -240,7 +256,10 @@ def main():
                 continue
 
             # Get the transformation from /odom (world) to the LIDAR scanner frame
-            transformation = get_transformation_matrix(tf_rot, tf_trans)
+            transformation = get_transformation_matrix(tf_rot, tf_trans)    # type: numpy.ndarray
+
+            # Subscribe to the ICP transformation published data
+            rospy.Subscriber("ICP_transformation", Floats, transformation_callback, queue_size=1)
                 
             # Sleep until next spin
             rate.sleep()
