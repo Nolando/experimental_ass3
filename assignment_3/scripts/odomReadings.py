@@ -102,7 +102,7 @@ def laser_callback(data):
     # Save the ranges and intensities from the odometry readings
     laser_ranges = np.array([data.ranges], np.float64)
 
-    # Empty row of zeroes for Vector3dVector - TEST AGAIN - this seems to work better in calculating transformation
+    # Empty row of zeroes for Vector3dVector - this seems to work better in calculating transformation
     zero_row = np.zeros(laser_ranges.size)
 
     # Create the n x 3 matrix for open3d type conversion
@@ -132,6 +132,9 @@ def tf_callback(data):
 
     # Save the data from the odometry readings
     tf_transform = data.transforms
+
+    # print("\n\n-------------------------------")
+    print(tf_transform)
 
     # Can see frame relationship between Odom and laser here
     # IN TERMINAL run: rostopic echo tf --> to see the frames
@@ -168,15 +171,16 @@ def icp_registration(source, target):
     # Initial transformation is estimated as the identiy matrix
     init_trans = np.identity(4)
 
+    test = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+        source, target, )
+
     # Calculate transformation
-    print("\n\n-----------------------\nTransformation from point-to-point ICP")
+    # print("\n\n-----------------------\nTransformation from point-to-point ICP")
     reg_p2p = o3d.registration.registration_icp(
-    source, target, threshold, init_trans,
-    o3d.registration.TransformationEstimationPointToPoint(),
-    o3d.registration.ICPConvergenceCriteria(max_iteration=10000))
-    print(reg_p2p)
-    print("\nTransformation is:")
-    print(reg_p2p.transformation)
+        source, target, threshold, init_trans,
+        o3d.registration.TransformationEstimationPointToPoint(),
+        o3d.registration.ICPConvergenceCriteria(max_iteration=10000))
+    # print(reg_p2p.transformation)
     # draw_registration_result(source, target, reg_p2p.transformation)
 
 #################################################################################
@@ -201,12 +205,12 @@ def main():
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
 
-            print("\n-------------------------------\nloop city fam")
+            # print("\n-------------------------------\nloop city fam")
 
             # Subscribe to odometry, scan and tf topics
-            rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
+            # rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
             rospy.Subscriber("/scan", LaserScan, laser_callback, queue_size=1)
-            # rospy.Subscriber("/tf", tfMessage, tf_callback, queue_size=1)
+            rospy.Subscriber("/tf", tfMessage, tf_callback, queue_size=1)
 
 
             # Sleep until next spin
