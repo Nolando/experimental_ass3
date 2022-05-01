@@ -41,6 +41,54 @@ def odom_callback(data):
     odomX.append(odom_pose.pose.position.x)
     odomY.append(odom_pose.pose.position.y)
 
+
+######################### Relative and Absolute Error ##################################
+# Function to calculate the relative and absolute trajectory error 
+def error(lidarDataX, lidarDataY, odomDataX, odomDataY, pointInteval):
+
+    # Error lists for average calculation
+    relativeErrorsX = []
+    absoluteErrorsX = []
+    relativeErrorsY = []
+    absoluteErrorsY = []
+
+    # Check if it is time to output the errors for the next interval
+    if pointCount == pointInteval:
+
+        # Error sum variables for a single interval
+        totalRelativeX = 0
+        totalAbsoluteX = 0
+        totalRelativeY = 0
+        totalAbsoluteY = 0
+
+        # Calculate the sum of the relative and absolute errors
+        for errorIndex in range(0, pointInteval):
+            totalRelativeX += relativeErrorsX[errorIndex]
+            totalRelativeY += relativeErrorsY[errorIndex]
+            totalAbsoluteX += absoluteErrorsX[errorIndex]
+            totalAbsoluteY += absoluteErrorsY[errorIndex]
+
+        # Calculate average errors and display
+        averageRelativeX = totalRelativeX/len(relativeErrorsX)
+        averageRelativeY = totalRelativeY/len(relativeErrorsY)
+        averageAbsoluteX = totalAbsoluteX/len(absoluteErrorsX)
+        averageAbsoluteY = totalAbsoluteY/len(absoluteErrorsY)
+        
+    else:
+        # Calculate the relative and absolute error for the current pair of points
+        currentRelativeX = abs(odomDataX - lidarDataX)
+        currentRelativeY = abs(odomDataY - lidarDataY)
+        currentAbsoluteX = currentRelativeX/odomDataX
+        currentAbsoluteY = currentRelativeY/odomDataY
+
+        # Add the current errors to their respective lists
+        relativeErrorsX.append(currentRelativeX)
+        relativeErrorsY.append(currentRelativeY)
+        absoluteErrorsX.append(currentAbsoluteX)
+        absoluteErrorsY.append(currentAbsoluteY)
+
+    return averageRelativeX, averageRelativeY, averageAbsoluteX, averageAbsoluteY
+
 #################################################################################
 # Subscriber callback function for the laser scan saves data
 def laser_callback(data):
@@ -163,6 +211,7 @@ def main():
             # rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
             rospy.Subscriber("/scan", LaserScan, laser_callback, queue_size=1)
             rospy.Subscriber("/tf", tfMessage, tf_callback, queue_size=1)
+
 
             # Sleep until next spin
             rate.sleep()
