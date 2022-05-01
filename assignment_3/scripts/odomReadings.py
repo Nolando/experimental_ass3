@@ -3,10 +3,12 @@
 
 # Subscribe to the odom topic to get the turtlebot odometry readings  
 import rospy
+import math
 import copy
 import numpy as np
 import open3d as o3d
 import tf                                       # /tf
+import geometry_msgs.msg
 from nav_msgs.msg import Odometry               # /odom
 import matplotlib.pyplot as plt
 from sensor_msgs.msg import LaserScan           # /scan
@@ -15,6 +17,7 @@ from scipy.spatial.transform import Rotation
 
 #################################################################################
 # Global variables
+tf_trans = list()
 
 # Open3d point clouds
 new_pcd = o3d.geometry.PointCloud()
@@ -41,6 +44,53 @@ def odom_callback(data):
     odomX.append(odom_pose.pose.position.x)
     odomY.append(odom_pose.pose.position.y)
 
+####################### Relative and Absolute Error #############################
+# Function to calculate the relative and absolute trajectory error 
+def error(lidarDataX, lidarDataY, odomDataX, odomDataY, pointInteval):
+
+    # Error lists for average calculation
+    relativeErrorsX = []
+    absoluteErrorsX = []
+    relativeErrorsY = []
+    absoluteErrorsY = []
+
+    # Check if it is time to output the errors for the next interval
+    if pointCount == pointInteval:
+
+        # Error sum variables for a single interval
+        totalRelativeX = 0
+        totalAbsoluteX = 0
+        totalRelativeY = 0
+        totalAbsoluteY = 0
+
+        # Calculate the sum of the relative and absolute errors
+        for errorIndex in range(0, pointInteval):
+            totalRelativeX += relativeErrorsX[errorIndex]
+            totalRelativeY += relativeErrorsY[errorIndex]
+            totalAbsoluteX += absoluteErrorsX[errorIndex]
+            totalAbsoluteY += absoluteErrorsY[errorIndex]
+
+        # Calculate average errors and display
+        averageRelativeX = totalRelativeX/len(relativeErrorsX)
+        averageRelativeY = totalRelativeY/len(relativeErrorsY)
+        averageAbsoluteX = totalAbsoluteX/len(absoluteErrorsX)
+        averageAbsoluteY = totalAbsoluteY/len(absoluteErrorsY)
+        
+    else:
+        # Calculate the relative and absolute error for the current pair of points
+        currentRelativeX = abs(odomDataX - lidarDataX)
+        currentRelativeY = abs(odomDataY - lidarDataY)
+        currentAbsoluteX = currentRelativeX/odomDataX
+        currentAbsoluteY = currentRelativeY/odomDataY
+
+        # Add the current errors to their respective lists
+        relativeErrorsX.append(currentRelativeX)
+        relativeErrorsY.append(currentRelativeY)
+        absoluteErrorsX.append(currentAbsoluteX)
+        absoluteErrorsY.append(currentAbsoluteY)
+
+    return averageRelativeX, averageRelativeY, averageAbsoluteX, averageAbsoluteY
+
 #################################################################################
 # Subscriber callback function for the laser scan saves data
 def laser_callback(data):
@@ -54,7 +104,7 @@ def laser_callback(data):
     # Save the ranges and intensities from the odometry readings
     laser_ranges = np.array([data.ranges], np.float64)
 
-    # Empty row of zeroes for Vector3dVector - TEST AGAIN - this seems to work better in calculating transformation
+    # Empty row of zeroes for Vector3dVector - this seems to work better in calculating transformation
     zero_row = np.zeros(laser_ranges.size)
 
     # Create the n x 3 matrix for open3d type conversion
@@ -85,18 +135,56 @@ def tf_callback(data):
     # Save the data from the odometry readings
     tf_transform = data.transforms
 
+    # print("\n\n-------------------------------")
+    print(tf_transform)
+
     # Can see frame relationship between Odom and laser here
     # IN TERMINAL run: rostopic echo tf --> to see the frames
     #             run: rosrun tf tf_echo /frame1 /frame2 --> to see transform from frame 1 to frame 2
 
 #################################################################################
-# Function converts the input 3x3 rotation matrix into quaternions
-def rotation_to_quaternion(rot_matrix):
+# Convert quaternion into a rotation matrix
+def quaternion_to_rotation_matrix(Q):
+    q0 = Q[0]
+    q1 = Q[1]
+    q2 = Q[2]
+    q3 = Q[3]
+
+    # Each element of the rot matrix using the conversion equation
+    p00 = 2 * (q0 * q0 + q1 * q1) - 1   # First row
+    p01 = 2 * (q1 * q2 - q0 * q3)
+    p02 = 2 * (q1 * q3 + q0 * q2)
+    p10 = 2 * (q1 * q2 + q0 * q3)       # Second row
+    p11 = 2 * (q0 * q0 + q2 * q2) - 1
+    p12 = 2 * (q2 * q3 - q0 * q1)
+    p20 = 2 * (q1 * q3 - q0 * q2)       # Third row
+    p21 = 2 * (q2 * q3 + q0 * q1)
+    p22 = 2 * (q0 * q0 + q3 * q3) - 1
+
+    # Rotation matrix
+    rotation_matrix = np.array([[p00, p01, p02],
+                                [p10, p11, p12],
+                                [p20, p21, p22]])
+    return rotation_matrix
+
+#################################################################################
+# Get transformation matrix from rotation in quaternions and translation vector
+def get_transformation_matrix(quats, trans_matrix):
     
-    # Note: scipy can also convert euler angles, rotation vectors
-    # Call the scipy function to convert to quaternions
-    quats = Rotation.from_matrix(rot_matrix)
-    return quats
+    # Change quaternion to rotation matrix
+    rot_matrix = quaternion_to_rotation_matrix(quats)   # type: numpy.ndarray
+
+    # Convert to numpy array
+    trans_matrix = np.array(trans_matrix)       # type: numpy.ndarray
+
+    # Create the transformation matrix
+    tf_matrix = np.array([[rot_matrix[0,0], rot_matrix[0,1], rot_matrix[0,2], trans_matrix[0]],
+                         [rot_matrix[1,0], rot_matrix[1,1], rot_matrix[1,2], trans_matrix[1]],
+                         [rot_matrix[2,0], rot_matrix[2,1], rot_matrix[2,2], trans_matrix[2]],
+                         [0, 0, 0, 1]])
+    
+    # Return the tf
+    return tf_matrix
 
 #################################################################################
 # Function sourced from Open3D Tutorials - visualises the alignment of the points
@@ -121,14 +209,12 @@ def icp_registration(source, target):
     init_trans = np.identity(4)
 
     # Calculate transformation
-    print("\n\n-----------------------\nTransformation from point-to-point ICP")
+    # print("\n\n-----------------------\nTransformation from point-to-point ICP")
     reg_p2p = o3d.registration.registration_icp(
-    source, target, threshold, init_trans,
-    o3d.registration.TransformationEstimationPointToPoint(),
-    o3d.registration.ICPConvergenceCriteria(max_iteration=10000))
-    print(reg_p2p)
-    print("\nTransformation is:")
-    print(reg_p2p.transformation)
+        source, target, threshold, init_trans,
+        o3d.registration.TransformationEstimationPointToPoint(),
+        o3d.registration.ICPConvergenceCriteria(max_iteration=10000))
+    # print(reg_p2p.transformation)     # type: numpy.ndarray
     # draw_registration_result(source, target, reg_p2p.transformation)
 
 #################################################################################
@@ -147,19 +233,31 @@ def main():
         # Change the spin rate to 1 Hz which is ~1 second
         rate = rospy.Rate(1)
 
-        # Can't estimate with ICP on first loop iteration
-        ICP_bool = False
+        listener = tf.TransformListener()
 
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
 
-            print("\n-------------------------------\nloop city fam")
+            # print("\n-------------------------------\nloop city fam")
 
-            # Subscribe to odometry, scan and tf topics
-            rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
+            # Subscribe to odometry, scan topics
+            # rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
             rospy.Subscriber("/scan", LaserScan, laser_callback, queue_size=1)
             # rospy.Subscriber("/tf", tfMessage, tf_callback, queue_size=1)
 
+            # Subscribe to the translation (linear transformation in x, y, z) 
+            # and rotation (quaternion in x, y, z, w) of the child relative to parent frame
+            try:
+                (tf_trans, tf_rot) = listener.lookupTransform('/base_scan', '/odom', rospy.Time(0))
+            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                continue
+
+            # Get the transformation from /odom (world) to the LIDAR scanner frame
+            transformation = get_transformation_matrix(tf_rot, tf_trans)
+            print(transformation)
+
+            # print(transformation)
+                
             # Sleep until next spin
             rate.sleep()
 
