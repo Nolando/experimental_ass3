@@ -70,10 +70,36 @@ class LeastSquaresSolver(object):
         Num columns - n_states * 3 (for x, y, phi) + n_landmarks * 2 (for x,y)
         Num rows - n_states * 3 (for x, y, phi) + n_measurements * 3
         '''
+
+        '''
+        To Do List:
+
+            Understand math/theory
+            Construct/Update A and B matrix
+            Create Cholesky Solver
+            Update State Vector
+            Calculate number of measurements
+            Construct Systtem Function Creation
+        '''
+
+
+
+
+        '''
+        Some relevant pseudocode potentially? Gauss-Newton for Non Linear Least Squares
+
+        while 1
+            linearize F(theta) in theta^i       -> L(delta)
+            solve L(delta)' = 0                 get delta*
+            if norm(delta*) < threshold
+                done
+            update theta^(i+1) = theta^i + delta*
+        '''
         self.iter = 0
 
         self.done = False
 
+        # Helper values to describe the system for debugging
         num_states = len(self.states)
         num_landmarks = len(self.landmarks)
         num_measurements = self.get_num_measurements()
@@ -81,26 +107,37 @@ class LeastSquaresSolver(object):
         print("Preparing to solve a system with {} poses, {} landmarks and a total {} measurements between them.".format(num_states,num_landmarks,num_measurements))
         self.solver_start = time.time()
         
+
+
         while not self.done:
+
+            #robot = Robot(initial, odo, get_index)
             
             # TODO Construct and Update A and b matrix
-            self.construct_system()
-            self.construct_state_vec()
+            state_dim = (3*num_states, 1)
+            landmark_dim = (2*num_landmarks,1)
+            measurement_dim = (2*num_measurements,1)
+
+            self.construct_system(state_dim, landmark_dim, measurement_dim)
+            self.construct_state_vec()          # Current robot poses, current landmarks 
 
             # TODO Solve system
-            ... = self.perform_cholesky_solve(...,...)
+            delta_star = self.perform_cholesky_solve(self.A,self.b)
 
             # TODO Update state vec
+            # VERY CRITICAL
+
+
 
             # Check if error less than threshold, logging
             if debug and self.iter%2 == 0:
-                print("Current Delta-Norm = " + str(np.linalg.norm(...)) + " on iteration " + str(self.iter))
-            if np.linalg.norm(...) < self.threshold or self.iter > self.max_num_iter:
-                print("Solved with error: {} on iteration # {}".format(np.linalg.norm(...),self.iter))
+                print("Current Delta-Norm = " + str(np.linalg.norm(delta_star)) + " on iteration " + str(self.iter))
+            if np.linalg.norm(delta_star) < self.threshold or self.iter > self.max_num_iter:
+                print("Solved with error: {} on iteration # {}".format(np.linalg.norm(delta_star),self.iter))
                 self.solver_finish = time.time()
                 print("Time taken: {} seconds.".format(self.solver_finish-self.solver_start))
                 self.done = True
-            elif np.linalg.norm(...) > self.div_threshold and self.iter > 0:
+            elif np.linalg.norm(delta_star) > self.div_threshold and self.iter > 0:
                 print("SOLVER DIVERGED. Stopping...")
                 self.solver_finish = time.time()
                 print("Time taken: {} seconds.".format(self.solver_finish-self.solver_start))
@@ -113,7 +150,20 @@ class LeastSquaresSolver(object):
     # Performs solving of system
     def perform_cholesky_solve(self, A, b):
 
+
+        # Some important equations from lecture slides
+
+        # A^T A delta = -A^T b
+        # A^T A = LL^T
+        # Solve LL^T delta = -A^T b by forward substituting Ly = -A^T b (lower triangular), and then back substituting L^T delta = y (upper triangular)
+        #  x_m = (b_m - Sum between i=1 and m-1 (l_(m,i)x_i)/l_(m,m)
+
+
+
         #TODO Set LHS and RHS
+
+        left_hs = A.T.dot(A)
+        right_hs = A.T.dot(b)
 
         c, low = cho_factor(left_hs)
 
@@ -123,19 +173,45 @@ class LeastSquaresSolver(object):
     def get_num_measurements(self):
         measurements = 0
         # TODO Get the number of measurements stored in the states
+        for i in range(num_states):
+            for j in self.states:
+                measurements+=1
+                j+=1
+            i+=1
         return measurements
 
 
-    def construct_system(self,state_dim=(??,??),landmark_dim=(??,??), measurement_dim=(??,??)):
-        # Calculate total dimensions (number of states, landmarks, meas)
+    def construct_system(self,state_dim,landmark_dim, measurement_dim):
+        
+        
+        # Constructing a linear system:
+        #       L(delta) = ||b||^2 + delta^T A^T b + 1/2 delta^T A^T A delta
+        #       A = Sigma ^(-T\2) J         weighted jacobians stacked in a matrix
+        #       b = - Sigma^(-T\2) r_0      residuals stacked in a vector
 
+        '''
+        A matrix:
+        Num columns - n_states * 3 (for x, y, phi) + n_landmarks * 2 (for x,y)
+        Num rows - n_states * 3 (for x, y, phi) + n_measurements * 3
+        '''
+
+        
+        
         # TODO
         # Preallocate the A matrix and b Vector.
-        self.A = ...
+
+        
+        self.A = np.zeros((len(state_dim)+3*len(measurement_dim),len(state_dim)+len(landmark_dim)))
         self.b = ...
 
         # Construct the top portion of the A matrix, you will need to go through your robot poses carefully.
+        
+        #for i in range(num_states):
+        #curr = Robot.get_current()
+
         # Update the A matrix
+        # 3x3 blocks
+        
         # Obtain predictions and Jacobians wrt Odo/Robot at present
         # Update jacobians with covariance 
         # Update A matrix     
@@ -154,12 +230,23 @@ class LeastSquaresSolver(object):
     # Construct a vector of the state values
     def construct_state_vec(self):
         # TODO Construct here the state vector Theta
-        self.state_vec = ...
+
+        # This is a column vector. All poses on top of all landmarks
+        # 
+        # Total dimension = 3*num_poses + 2*num_landmarks
+
+        state_dim = num_states*3 + num_landmarks*2
+
+        # Create empty state vector of size state_dim x 1
+        temp_state_vec = np.zeros((state_dim, 1))
+        self.state_vec = temp_state_vec
         
     def update_vertices(self):
 
+        
         # TODO Update the current stored positions/poses of landmarks/robot
-        ...
+
+        
 
 
 
@@ -389,7 +476,7 @@ class SLAM():
                 self.skip = True
 
                 # TODO Perform solve and plot results 
-                # Becareful about what your passing, might need to copy varibles
+                # Becareful about what your passing, might need to copy varibles 
 
                 break
             
