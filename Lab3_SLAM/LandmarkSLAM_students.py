@@ -205,7 +205,7 @@ class LeastSquaresSolver(object):
 
         
         self.A = np.zeros((len(state_dim)+3*len(measurement_dim),len(state_dim)+len(landmark_dim)))
-        self.b = ...
+        self.b = np.zeros((len(num_states)*3+len(num_landmarks)*2),1)
 
         # Construct the top portion of the A matrix, you will need to go through your robot poses carefully.
         #init_robot_pose = robot.get_initial()
@@ -217,10 +217,14 @@ class LeastSquaresSolver(object):
 
         for i in range(num_state):
             
-            next_pose = robot.predict_state(robot.get_current)
+            curr_pose = robot.get_current()
+            next_pose = robot.predict_state(curr_pose)
             curr_odo = robot.get_odo
-            pred_motion, F_k, G_k = geometry.Absolute2RelativePose(robot.get_current, next_pose)
+            pred_motion, F_k, G_k = geometry.Absolute2RelativePose(curr_pose, next_pose)
 
+            curr_pose = robot.set_current(next_pose)
+
+            blabla
             if i == robot.get_index:
                 self.A[i,i] = np.dot(G_k, robot.get_covariance_processed)
             elif i+1 == robot.get_index:
