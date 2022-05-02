@@ -91,7 +91,14 @@ def laser_callback(data):
 
     #####################################################################################################
     # 3 rows for open3d Vector3dVector format
-    new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])   # float64
+    # new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])   # float64
+
+    zeros_row = np.zeros(laser_ranges.size/2)
+    new_data = np.vstack([laser_ranges[0:180], laser_ranges[180:360], zeros_row])
+
+    # zeros_row = np.zeros(laser_ranges.size)
+    # new_data = np.vstack([laser_ranges, np.asarray(data.intensities), zeros_row])
+    #####################################################################################################
 
     # Transpose the matrix for open3d format input
     new_data = np.transpose(new_data)
@@ -99,10 +106,14 @@ def laser_callback(data):
     # Convert the numpy array to open3d type
     new_pcd.points = o3d.utility.Vector3dVector(new_data)
 
+    # print(np.asarray(new_pcd.points))
+
     # Check that the pointclouds are different
     if old_pcd.points != new_pcd.points and np.asarray(old_pcd.points).size != 0:
 
         ############################################################
+        # print('Average of old_pcd ', np.average(np.asarray(old_pcd.points)))
+        # print('Average of new_pcd ', np.average(np.asarray(new_pcd.points)))
         draw_registration_result(old_pcd, new_pcd, np.identity(4))
         ############################################################
         
@@ -129,7 +140,7 @@ def icp_transformation_callback(data):                                          
     icp_transformation_matrix = np.reshape(np.array(data.data), (4, 4))                         # float64
 
     # Multiply the two matrices
-    result = np.matmul(icp_transformation_matrix, result_temp)                                  # float64
+    result = np.matmul(result_temp, icp_transformation_matrix)                                  # float64
 
     # print("\n\nframes transformation:")
     # print(type(transformation_frames))
@@ -150,7 +161,6 @@ def draw_registration_result(source, target, transformation):
     target_temp = copy.deepcopy(target)
     source_temp.paint_uniform_color([1, 0.706, 0])
     target_temp.paint_uniform_color([0, 0.651, 0.929])
-    source_temp.transform(transformation)
     o3d.visualization.draw_geometries([source_temp, target_temp])
 
 #################################################################################
@@ -165,7 +175,7 @@ def icp_registration(source, target):
     target_temp = copy.deepcopy(target)
     
     # Threshold for ICP correspondences
-    threshold = 0.2
+    threshold = 0.03
 
     # Initial transformation is estimated as the identiy matrix
     init_trans = np.identity(4)
@@ -183,7 +193,7 @@ def icp_registration(source, target):
     reg_p2p = o3d.registration.registration_icp(
         source_temp, target_temp, threshold, init_trans,
         o3d.registration.TransformationEstimationPointToPoint(),
-        o3d.registration.ICPConvergenceCriteria(max_iteration=1000))
+        o3d.registration.ICPConvergenceCriteria(max_iteration=5000))
     # print(reg_p2p)
     # print("\nTransformation is:")
     # print(reg_p2p.transformation)
@@ -246,19 +256,11 @@ def main():
             print("loop start")
 
             # Subscribe to odometry, scan topics
-            rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
-            rospy.Subscriber("/scan", LaserScan, laser_callback, queue_size=1)
-
-            # Subscribe to the translation (linear transformation in x, y, z) 
-            # and rotation (quaternion in x, y, z, w) of the child relative to parent frame
-            try:
-                # (tf_trans, tf_rot) = listener.lookupTransform('/base_scan', '/odom', rospy.Time(0))     # Think this is more right
-                (tf_trans, tf_rot) = listener.lookupTransform('/odom', '/base_scan', rospy.Time(0))
-            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-                continue
+            rospy.Subscriber("/odom", Odometry, odom_callback)#, queue_size=1)
+            rospy.Subscriber("/scan", LaserScan, laser_callback)#, queue_size=1)
 
             # Subscribe to the ICP transformation published data
-            rospy.Subscriber("ICP_transformation", Floats, icp_transformation_callback, queue_size=1)
+            rospy.Subscriber("ICP_transformation", Floats, icp_transformation_callback)#, queue_size=1)
                 
             # Sleep until next spin
             rate.sleep()
@@ -269,7 +271,7 @@ def main():
         plt.title("Odometry Readings Trajectory")
         plt.xlabel("X pose position")
         plt.ylabel("Y pose position")
-        # plt.show()
+        plt.show()
 
 
     except rospy.ROSInterruptException:
