@@ -114,11 +114,11 @@ class LeastSquaresSolver(object):
             #robot = Robot(initial, odo, get_index)
             
             # TODO Construct and Update A and b matrix
-            state_dim = (3*num_states, 1)
-            landmark_dim = (2*num_landmarks,1)
-            measurement_dim = (2*num_measurements,1)
+            # state_dim = 3*num_states#(3*num_states, 1)
+            # landmark_dim = #(2*num_landmarks,1)
+            # measurement_dim = (2*num_measurements,1)
 
-            self.construct_system(state_dim, landmark_dim, measurement_dim)
+            self.construct_system(num_states,num_landmarks,num_measurements)#state_dim, landmark_dim, measurement_dim)
             self.construct_state_vec()          # Current robot poses, current landmarks 
 
             # TODO Solve system
@@ -162,12 +162,12 @@ class LeastSquaresSolver(object):
 
         #TODO Set LHS and RHS
 
-        left_hs = A.T.dot(A)
-        right_hs = A.T.dot(b)
+        left_hs = np.matmul(A.T, A)
+        right_hs = np.matmul(-A.T, b)
 
-        c, low = cho_factor(left_hs)
+        LLt, low = cho_factor(left_hs)
 
-        return cho_solve((c,low), right_hs)
+        return cho_solve((LLt,low), right_hs)
 
     # Calculate total number of measurements from states
     def get_num_measurements(self):
@@ -182,12 +182,12 @@ class LeastSquaresSolver(object):
         return measurements
 
 
-    def construct_system(self,state_dim,landmark_dim, measurement_dim):
+    def construct_system(self,num_state,num_landmark, num_measurement):
         robot = Robot
         landmark = Landmark
-        num_state = state_dim/3
-        num_landmarks = landmark_dim/2
-        num_measurement = measurement_dim/2
+        #num_state = state_dim/3
+        #num_landmarks = landmark_dim/2
+        #num_measurement = measurement_dim/2
         # Constructing a linear system:
         #       L(delta) = ||b||^2 + delta^T A^T b + 1/2 delta^T A^T A delta
         #       A = Sigma ^(-T\2) J         weighted jacobians stacked in a matrix
@@ -208,6 +208,9 @@ class LeastSquaresSolver(object):
         self.A = np.zeros((len(state_dim)+3*len(measurement_dim),len(state_dim)+len(landmark_dim)))
         self.b = np.zeros((len(num_states)*3+len(num_landmarks)*2),1)
 
+
+        
+
         # Construct the top portion of the A matrix, you will need to go through your robot poses carefully.
         #init_robot_pose = robot.get_initial()
         #first_robot_pose = robot.predict_state(init_robot_pose)
@@ -216,25 +219,23 @@ class LeastSquaresSolver(object):
 
         #pred_motion, F_k, G_k = geometry.Absolute2RelativePose(init_robot, robot.)
 
-        for i in range(num_state):
+        # for i in range(num_state):
             
-            curr_pose = robot.get_current()
-            next_pose = robot.predict_state(curr_pose)
-            curr_odo = robot.get_odo
-            pred_motion, F_k, G_k = geometry.Absolute2RelativePose(curr_pose, next_pose)
+        #     curr_pose = robot.get_current()
+        #     next_pose = robot.predict_state(curr_pose)
+        #     curr_odo = robot.get_odo
+        #     pred_motion, F_k, G_k = geometry.Absolute2RelativePose(curr_pose, next_pose)
 
-            curr_pose = robot.set_current(next_pose)
+        #     curr_pose = robot.set_current(next_pose)
+        #     if i == robot.get_index:
+        #         self.A[i,i] = np.dot(G_k, robot.get_covariance_processed)
+        #     elif i+1 == robot.get_index:
+        #         self.A[i+1,i] = np.dot(F_k, robot.get_covariance_processed)
+        #     motion_residual = pred_motion - curr_odo
+        #     pred_measure, H_k, J_j = landmark.landmark_jacobs(robot.get_current)
+        #     measure_residual = pred_measure - init_land
 
-            blabla
-            if i == robot.get_index:
-                self.A[i,i] = np.dot(G_k, robot.get_covariance_processed)
-            elif i+1 == robot.get_index:
-                self.A[i+1,i] = np.dot(F_k, robot.get_covariance_processed)
-            motion_residual = pred_motion - curr_odo
-            pred_measure, H_k, J_j = landmark.landmark_jacobs(robot.get_current)
-            measure_residual = pred_measure - init_land
-
-            if i == landmark.get_index:
+        #     if i == landmark.get_index:
                 
 
 
