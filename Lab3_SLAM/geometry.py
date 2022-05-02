@@ -164,12 +164,12 @@ def Absolute2RelativeXY(robot_pose_abs, landmark_position_abs):
     landmark_position_rel = np.matmul(R, diff)
 
     # Calculate Jacobian of the relative landmark position wrt. the robot pose,
-    # i.e. [x1, y1, theta1]
+    # i.e. [x1, y1, theta1] h_k
     H1 = [[-np.cos(theta1), -np.sin(theta1), -(x2-x1)*np.sin(theta1)+(y2-y1)*np.cos(theta1)],
           [np.sin(theta1), -np.cos(theta1), -(x2-x1)*np.cos(theta1)-(y2-y1)*np.sin(theta1)]]
 
     # Calculate Jacobian of the relative landmark position wrt. the absolute
-    # landmark pose. i.e. [x2, y2]
+    # landmark pose. i.e. [x2, y2] j_j
     H2 = [[np.cos(theta1), np.sin(theta1)],
           [-np.sin(theta1), np.cos(theta1)]]
 
