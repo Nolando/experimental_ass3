@@ -34,7 +34,7 @@ def odom_callback(data):
 
 ####################### Relative and Absolute Error #############################
 # Function to calculate the relative and absolute trajectory error 
-def error(lidarDataX, lidarDataY, odomDataX, odomDataY, pointInteval):
+def error(lidarDataX, lidarDataY, odomDataX, odomDataY):
 
     # Error lists for average calculation
     relativeErrorsX = []
@@ -42,29 +42,15 @@ def error(lidarDataX, lidarDataY, odomDataX, odomDataY, pointInteval):
     relativeErrorsY = []
     absoluteErrorsY = []
 
-    # Check if it is time to output the errors for the next interval
-    if pointCount == pointInteval:
-
-        # Error sum variables for a single interval
-        totalRelativeX = 0
-        totalAbsoluteX = 0
-        totalRelativeY = 0
-        totalAbsoluteY = 0
-
-        # Calculate the sum of the relative and absolute errors
-        for errorIndex in range(0, pointInteval):
-            totalRelativeX += relativeErrorsX[errorIndex]
-            totalRelativeY += relativeErrorsY[errorIndex]
-            totalAbsoluteX += absoluteErrorsX[errorIndex]
-            totalAbsoluteY += absoluteErrorsY[errorIndex]
-
-        # Calculate average errors and display
-        averageRelativeX = totalRelativeX/len(relativeErrorsX)
-        averageRelativeY = totalRelativeY/len(relativeErrorsY)
-        averageAbsoluteX = totalAbsoluteX/len(absoluteErrorsX)
-        averageAbsoluteY = totalAbsoluteY/len(absoluteErrorsY)
-        
+    # Set the data length to the length of the smaller data set
+    if odomDataX > lidarDataX:
+        dataLength = len(lidarDataX)
     else:
+        dataLength = len(odomDataX)
+
+    # Check if it is time to output the errors for the next interval
+    for index in range(0, dataLength):
+
         # Calculate the relative and absolute error for the current pair of points
         currentRelativeX = abs(odomDataX - lidarDataX)
         currentRelativeY = abs(odomDataY - lidarDataY)
@@ -76,6 +62,25 @@ def error(lidarDataX, lidarDataY, odomDataX, odomDataY, pointInteval):
         relativeErrorsY.append(currentRelativeY)
         absoluteErrorsX.append(currentAbsoluteX)
         absoluteErrorsY.append(currentAbsoluteY)
+
+    # Error sum variables for a single interval
+    totalRelativeX = 0
+    totalAbsoluteX = 0
+    totalRelativeY = 0
+    totalAbsoluteY = 0
+
+    # Calculate the sum of the relative and absolute errors
+    for errorIndex in range(0, dataLength):
+        totalRelativeX += relativeErrorsX[errorIndex]
+        totalRelativeY += relativeErrorsY[errorIndex]
+        totalAbsoluteX += absoluteErrorsX[errorIndex]
+        totalAbsoluteY += absoluteErrorsY[errorIndex]
+
+    # Calculate average errors and display
+    averageRelativeX = totalRelativeX/len(relativeErrorsX)
+    averageRelativeY = totalRelativeY/len(relativeErrorsY)
+    averageAbsoluteX = totalAbsoluteX/len(absoluteErrorsX)
+    averageAbsoluteY = totalAbsoluteY/len(absoluteErrorsY)
 
     return averageRelativeX, averageRelativeY, averageAbsoluteX, averageAbsoluteY
 
