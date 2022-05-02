@@ -86,7 +86,8 @@ def laser_callback(data):
     old_pcd = copy.deepcopy(new_pcd)
 
     # Save the ranges and intensities from the odometry readings - FIDDLE AROUND WITH FLOAT32 OR FLOAT64
-    laser_ranges = np.array([data.ranges], np.float32)          # size: 1 x 360
+    # laser_ranges = np.asarray([data.ranges], np.float64)          # size: 1 x 360
+    laser_ranges = np.asarray(data.ranges)                          # size: (360,)
 
     #############################################################################
     ########## Test if 3 rows of diff stuff of same stuff is better #############
@@ -101,28 +102,31 @@ def laser_callback(data):
         # Add 1D LIDAR data array to the next available row
         # new_data = np.append(new_data, laser_ranges,axis=0)
 
-    new_data = np.vstack([laser_ranges, laser_ranges, laser_ranges])
+    # print(laser_ranges[0:120])
+    new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])
+    # print(laser_ranges.shape)
+    # new_data = np.split(laser_ranges, 3)
 
     #############################################################################
     #############################################################################
 
     # Test if the variable has 3 columns - means n x 3 is full yet
-    if new_data.size == 1080:
+    # if new_data.size == 1080:
 
-        # Transpose the matrix for open3d format input
-        new_data = np.transpose(new_data)                       # size: 360 x 3
+    # Transpose the matrix for open3d format input
+    new_data = np.transpose(new_data)                       # size: 360 x 3
 
-        # Convert the numpy array to open3d type
-        new_pcd.points = o3d.utility.Vector3dVector(new_data)
+    # Convert the numpy array to open3d type
+    new_pcd.points = o3d.utility.Vector3dVector(new_data)
 
-        # Check that the pointclouds are different
-        if old_pcd.points != new_pcd.points and np.asarray(old_pcd.points).size != 0:
-            
-            # Conduct ICP registration
-            icp_registration(old_pcd, new_pcd)
+    # Check that the pointclouds are different
+    if old_pcd.points != new_pcd.points and np.asarray(old_pcd.points).size != 0:
+        
+        # Conduct ICP registration
+        icp_registration(old_pcd, new_pcd)
 
-        # Clear the new_data variable for the next iteration of points
-        new_data = np.array([])
+    # Clear the new_data variable for the next iteration of points
+    new_data = np.array([])
 
     # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
 
@@ -131,23 +135,41 @@ def laser_callback(data):
 # and get the x and y trajectory
 def icp_transformation_callback(data):
 
+    global icp_transformation_matrix
+
     # Convert data into a numpy matrix
-    transformation_matrix = np.reshape(np.asarray(data.data), (4, 4))
+    icp_transformation_matrix = np.reshape(np.array(data.data), (4, 4))
 
-    # Multiply the two matrices
+    # print(icp_transformation_matrix)
 
-
-    # TO DO: SPLIT THIS INTO ELEMENTS AS IT IS ONLY SAYING THAT IT IS 1X1 VECTOR WITH ALL POINTS
-    print("\n\n------------------")
-    print(transformation_matrix[3,3])
-
-
+    # Call the subscriber for the frame transformation
     rospy.Subscriber("TF_transformation", Floats, tf_matrix_callback, queue_size=1)
 
 #################################################################################
 # tf callback multiplies the two matrices and 
 def tf_matrix_callback(data):
-    print(data.data)
+
+    global result
+
+    # Convert data into a numpy 4x4 matrix
+    transformation_frames = np.reshape(np.array(data.data), (4, 4))
+
+    # Multiply the two matrices
+    # result = transformation_frames * icp_transformation_matrix
+    result = np.matmul(result, icp_transformation_matrix)
+
+    # print("\n\nframes transformation:")
+    # print(type(transformation_frames))
+    # print("icp transformation:")
+    # print(type(icp_transformation_matrix))
+    print("Product of the start with icp results:")
+    print(result)
+    print("\n\n")
+
+    # Add the current x and y pose positions to the odom lists
+    icpX.append(result[0, 3])
+    icpY.append(result[1, 3])
+
 
 #################################################################################
 # Convert quaternion into a rotation matrix
@@ -189,14 +211,11 @@ def get_transformation_matrix(quats, trans_matrix):
                          [rot_matrix[1,0], rot_matrix[1,1], rot_matrix[1,2], trans_matrix[1]],
                          [rot_matrix[2,0], rot_matrix[2,1], rot_matrix[2,2], trans_matrix[2]],
                          [0, 0, 0, 1]])
-    
-    # Return the tf
-    # return tf_matrix
 
     # Publish the transformation
     matrix_flat = tf_matrix.flatten()
     
-    # Publish the ICP transformation as an array
+    # Publish the ICP transformation as an array - needs to be float32
     matrix_flat = np.array(matrix_flat, dtype=np.float32)
     tf_pub.publish(matrix_flat)
 
@@ -209,7 +228,7 @@ def draw_registration_result(source, target, transformation):
     source_temp.paint_uniform_color([1, 0.706, 0])
     target_temp.paint_uniform_color([0, 0.651, 0.929])
     source_temp.transform(transformation)
-    # o3d.visualization.draw_geometries([source_temp, target_temp])
+    o3d.visualization.draw_geometries([source_temp, target_temp])
 
 #################################################################################
 # Function sourced from Open3D Tutorials - calculates the resultant transformation
@@ -230,10 +249,16 @@ def icp_registration(source, target):
         source, target, threshold, init_trans,
         o3d.registration.TransformationEstimationPointToPoint(),
         o3d.registration.ICPConvergenceCriteria(max_iteration=10000))
-    icp_transformation = reg_p2p.transformation.flatten()
+
+    #################################################################################
+    # draw_registration_result(source, target, init_trans)
+    #################################################################################
     
-    # Publish the ICP transformation as an array
+    # Flatten the matrix for publishing
+    icp_transformation = reg_p2p.transformation.flatten()
     flat_array = np.array(icp_transformation, dtype=np.float32)
+    
+    # Publish the ICP transformation as an array - needs to be float32
     icp_pub.publish(flat_array)
     
 
@@ -241,9 +266,15 @@ def icp_registration(source, target):
 def main():
 
     # Global vairables
-    global odomX, odomY, new_data, new_pcd, old_pcd, icp_pub, tf_pub
+    global odomX, odomY, new_data, new_pcd, old_pcd, icp_pub, tf_pub, icpX, icpY, result
+    result = np.array([[1, 0, 0, 0.1],
+                       [0, 1, 0, 0.1],
+                       [0, 0, 1, 0.1],
+                       [0, 0, 0, 1]])
     odomX = []
     odomY = []
+    icpX = []
+    icpY = []
     new_data = np.array([])
 
     # Open3d point clouds
@@ -274,7 +305,8 @@ def main():
             # Subscribe to the translation (linear transformation in x, y, z) 
             # and rotation (quaternion in x, y, z, w) of the child relative to parent frame
             try:
-                (tf_trans, tf_rot) = listener.lookupTransform('/base_scan', '/odom', rospy.Time(0))
+                # (tf_trans, tf_rot) = listener.lookupTransform('/base_scan', '/odom', rospy.Time(0))     # Think this is more right
+                (tf_trans, tf_rot) = listener.lookupTransform('/odom', '/base_scan', rospy.Time(0))
             except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                 continue
 
@@ -288,11 +320,12 @@ def main():
             rate.sleep()
 
         # Plot the odometry trajectory 
-        plt.plot(odomX, odomY)
+        plt.plot(odomX, odomY, icpX, icpY)
+        # plt.plot(icpX, icpY)
         plt.title("Odometry Readings Trajectory")
         plt.xlabel("X pose position")
         plt.ylabel("Y pose position")
-        # plt.show()
+        plt.show()
 
 
     except rospy.ROSInterruptException:
