@@ -2,15 +2,12 @@
 # Machine Unlearning
 
 # Subscribe to the odom topic to get the turtlebot odometry readings  
-from numpy import dtype
 import rospy
 import copy
 import numpy as np
 import open3d as o3d
-
 import laser_geometry.laser_geometry as lg
 import ros_numpy
-
 from nav_msgs.msg import Odometry               # /odom
 import matplotlib.pyplot as plt
 from sensor_msgs.msg import LaserScan           # /scan
@@ -96,6 +93,10 @@ def laser_callback(data):
     # 3 rows for open3d Vector3dVector format
     # new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])   # float64
 
+    # Format of the data is x and y, with z as zero
+    # zeros_row = np.zeros(laser_ranges.size/2)
+    # new_data = np.vstack([laser_ranges[0:180], laser_ranges[180:360], zeros_row])
+
     # Converting the LaserScan message into PointCloud2
     lp = lg.LaserProjection()
     pc2_msg = lp.projectLaser(data)
@@ -108,39 +109,24 @@ def laser_callback(data):
     np_points[:, 0] = np.resize(pc['x'], height * width)
     np_points[:, 1] = np.resize(pc['y'], height * width)
     np_points[:, 2] = np.resize(pc['z'], height * width)
-
-    # Format of the data is x and y, with z as zero
-    # zeros_row = np.zeros(laser_ranges.size/2)
-    # new_data = np.vstack([laser_ranges[0:180], laser_ranges[180:360], zeros_row])
-
-    # zeros_row = np.zeros(laser_ranges.size)
-    # new_data = np.vstack([laser_ranges, np.asarray(data.intensities), zeros_row])
     #####################################################################################################
 
-    # Transpose the matrix for open3d format input
-    # new_data = np.transpose(new_data)
 
     # Convert the numpy array to open3d type
     new_pcd.points = o3d.utility.Vector3dVector(np_points)
-
-    # print(np.asarray(new_pcd.points))
 
     # Check that the pointclouds are different
     if old_pcd.points != new_pcd.points and np.asarray(old_pcd.points).size != 0:
 
         ############################################################
-        # print('Average of old_pcd ', np.average(np.asarray(old_pcd.points)))
-        # print('Average of new_pcd ', np.average(np.asarray(new_pcd.points)))
         # draw_registration_result(old_pcd, new_pcd, np.identity(4))
         ############################################################
         
         # Conduct ICP registration
         icp_registration(old_pcd, new_pcd)
 
-    # Clear the new_data variable for the next iteration of points
-    # new_data = np.array([])
-
     # # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
+    
 
 
 #################################################################################
@@ -156,22 +142,22 @@ def icp_transformation_callback(data):                                          
     # Convert data into a numpy matrix
     icp_transformation_matrix = np.reshape(np.array(data.data), (4, 4))                         # float64
 
-    # Multiply the two matrices
-    # result = np.matmul(result_temp, icp_transformation_matrix)                                  # float64
-    # result = np.matmul(icp_transformation_matrix, result_temp)
-    result = np.matmul(result, np.linalg.inv(icp_transformation_matrix))
+    # Frame 
+    frame_conv = np.array([[1, 0, 0, 0],
+                           [0, 1, 0, 0],
+                           [0, 0, 1, 0],
+                           [0, 0, 0, -1]], dtype=np.float64)
 
-    # print("\n\nframes transformation:")
-    # print(type(transformation_frames))
-    # print("icp transformation:")
-    # print(type(icp_transformation_matrix))
-    # print("Product of the start with icp results:")
-    # print(result)
-    # print("\n\n")
+    # Multiply the two matrices
+    # result = np.matmul(result_temp, icp_transformation_matrix)                                # float64
+    temp_result = np.matmul(frame_conv, result)
+    result = np.matmul(temp_result, np.linalg.inv(icp_transformation_matrix))
 
     # Add the current x and y pose positions to the odom lists
-    icpX.append(result[0, 3])                                                                   # float64
-    icpY.append(result[1, 3])                                                                   # float64
+    icpX.append(-1 * result[0, 3])                                                                   # float64
+    icpY.append(-1 * result[1, 3])                                                                   # float64
+
+    print("added point from icp")
 
 #################################################################################
 # Function sourced from Open3D Tutorials - visualises the alignment of the points
@@ -194,25 +180,15 @@ def icp_registration(source, target):
     target_temp = copy.deepcopy(target)
     
     # Threshold for ICP correspondences
-    threshold = 0.03
+    threshold = 0.01
 
     # Initial transformation is estimated as the identiy matrix
     init_trans = np.identity(4)
 
-    # print("Evaluation of initial alignment")
-    evaluation = o3d.pipelines.registration.evaluate_registration(
-        source_temp, target_temp, threshold, init_trans)
-    # print(evaluation)
-    # draw_registration_result(source, target, init_trans)
-
-    # print("\nTransformation from point-to-point ICP")
     reg_p2p = o3d.pipelines.registration.registration_icp(
         source_temp, target_temp, threshold, init_trans,
         o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-        o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=2000))
-    # print("\nTransformation is:")
-    # print(reg_p2p.transformation)
-    # draw_registration_result(source, target, reg_p2p.transformation)
+        o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=3000))
     
     # Flatten the matrix for publishing
     icp_transformation = reg_p2p.transformation.flatten()                                       # float64
@@ -221,24 +197,22 @@ def icp_registration(source, target):
     
     # Publish the ICP transformation as an array - needs to be float32
     icp_pub.publish(flat_array)
-    
 
 #################################################################################
 def main():
 
     # Global vairables
-    global odomX, odomY, new_pcd, old_pcd, icp_pub, icpX, icpY, result #, new_data
+    global odomX, odomY, new_pcd, old_pcd, icp_pub, icpX, icpY, result
 
     # Global variable initialisation
     result = np.array([[1, 0, 0, 0],
                        [0, 1, 0, 0],
                        [0, 0, 1, 0],
-                       [0, 0, 0, 1]], dtype=np.float64)
+                       [0, 0, 0, 1]], dtype=np.float64)         # Could change this to /odom frame coord?
     odomX = []
     odomY = []
     icpX = []
     icpY = []
-    new_data = np.array([])
 
     # Open3d point clouds
     new_pcd = o3d.geometry.PointCloud()
@@ -257,7 +231,7 @@ def main():
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
 
-            print("loop start")
+            print("while loop")
 
             # Subscribe to odometry, scan topics
             rospy.Subscriber("/odom", Odometry, odom_callback)#, queue_size=1)
