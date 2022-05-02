@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Machine Unlearning
 
 # Subscribe to the odom topic to get the turtlebot odometry readings  
@@ -7,18 +7,13 @@ import rospy
 import copy
 import numpy as np
 import open3d as o3d
-import tf                                       # /tf
 
-import geometry_msgs.msg
 import laser_geometry.laser_geometry as lg
-import sensor_msgs.point_cloud2 as pc2
-from sensor_msgs.msg import PointCloud2
 import ros_numpy
 
 from nav_msgs.msg import Odometry               # /odom
 import matplotlib.pyplot as plt
 from sensor_msgs.msg import LaserScan           # /scan
-from rospy.numpy_msg import numpy_msg
 from rospy_tutorials.msg import Floats
 
 
@@ -101,15 +96,12 @@ def laser_callback(data):
     # 3 rows for open3d Vector3dVector format
     # new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])   # float64
 
-
+    # Converting the LaserScan message into PointCloud2
     lp = lg.LaserProjection()
     pc2_msg = lp.projectLaser(data)
-    test = np.array(pc2_msg)
-    # print(pc2_msg)
 
+    # Convert the PointCloud2 into a numpy array
     pc = ros_numpy.numpify(pc2_msg)
-
-    # print(pc)
     height = pc2_msg.height
     width = pc2_msg.width
     np_points = np.zeros((height * width, 3), dtype=np.float64)
@@ -117,10 +109,9 @@ def laser_callback(data):
     np_points[:, 1] = np.resize(pc['y'], height * width)
     np_points[:, 2] = np.resize(pc['z'], height * width)
 
-    # print(np_points.shape)
-
-    zeros_row = np.zeros(laser_ranges.size/2)
-    new_data = np.vstack([laser_ranges[0:180], laser_ranges[180:360], zeros_row])
+    # Format of the data is x and y, with z as zero
+    # zeros_row = np.zeros(laser_ranges.size/2)
+    # new_data = np.vstack([laser_ranges[0:180], laser_ranges[180:360], zeros_row])
 
     # zeros_row = np.zeros(laser_ranges.size)
     # new_data = np.vstack([laser_ranges, np.asarray(data.intensities), zeros_row])
@@ -147,7 +138,7 @@ def laser_callback(data):
         icp_registration(old_pcd, new_pcd)
 
     # Clear the new_data variable for the next iteration of points
-    new_data = np.array([])
+    # new_data = np.array([])
 
     # # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
 
@@ -166,7 +157,9 @@ def icp_transformation_callback(data):                                          
     icp_transformation_matrix = np.reshape(np.array(data.data), (4, 4))                         # float64
 
     # Multiply the two matrices
-    result = np.matmul(result_temp, icp_transformation_matrix)                                  # float64
+    # result = np.matmul(result_temp, icp_transformation_matrix)                                  # float64
+    # result = np.matmul(icp_transformation_matrix, result_temp)
+    result = np.matmul(result, np.linalg.inv(icp_transformation_matrix))
 
     # print("\n\nframes transformation:")
     # print(type(transformation_frames))
@@ -201,37 +194,25 @@ def icp_registration(source, target):
     target_temp = copy.deepcopy(target)
     
     # Threshold for ICP correspondences
-    threshold = 0.5
+    threshold = 0.03
 
     # Initial transformation is estimated as the identiy matrix
     init_trans = np.identity(4)
 
-    print(np.asarray(source.points))
-    print(np.asarray(target.points))
-
     # print("Evaluation of initial alignment")
-    evaluation = o3d.registration.evaluate_registration(
+    evaluation = o3d.pipelines.registration.evaluate_registration(
         source_temp, target_temp, threshold, init_trans)
     # print(evaluation)
     # draw_registration_result(source, target, init_trans)
 
     # print("\nTransformation from point-to-point ICP")
-    reg_p2p = o3d.registration.registration_icp(
+    reg_p2p = o3d.pipelines.registration.registration_icp(
         source_temp, target_temp, threshold, init_trans,
-        o3d.registration.TransformationEstimationPointToPoint(),
-        o3d.registration.ICPConvergenceCriteria(max_iteration=5000))
-    # print(reg_p2p)
+        o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+        o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=2000))
     # print("\nTransformation is:")
     # print(reg_p2p.transformation)
     # draw_registration_result(source, target, reg_p2p.transformation)
-
-    # Calculate transformation
-    # reg_p2p = o3d.registration.registration_icp(
-    #     source, target, threshold, init_trans,
-    #     o3d.registration.TransformationEstimationPointToPoint(),
-    #     o3d.registration.ICPConvergenceCriteria(max_iteration=10000))
-
-    # draw_registration_result(source, target, init_trans)
     
     # Flatten the matrix for publishing
     icp_transformation = reg_p2p.transformation.flatten()                                       # float64
@@ -246,7 +227,7 @@ def icp_registration(source, target):
 def main():
 
     # Global vairables
-    global odomX, odomY, new_data, new_pcd, old_pcd, icp_pub, icpX, icpY, result
+    global odomX, odomY, new_pcd, old_pcd, icp_pub, icpX, icpY, result #, new_data
 
     # Global variable initialisation
     result = np.array([[1, 0, 0, 0],
@@ -272,9 +253,6 @@ def main():
 
         # Change the spin rate to 1 Hz which is ~1 second
         rate = rospy.Rate(1)
-
-        # Listener variable for tf topic
-        listener = tf.TransformListener()
 
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
