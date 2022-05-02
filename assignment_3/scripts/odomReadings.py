@@ -89,6 +89,7 @@ def laser_callback(data):
     # Save the ranges from the odometry readings
     laser_ranges = np.asarray(data.ranges)                                                      # float64
 
+    #####################################################################################################
     # 3 rows for open3d Vector3dVector format
     new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])   # float64
 
@@ -98,16 +99,12 @@ def laser_callback(data):
     # Convert the numpy array to open3d type
     new_pcd.points = o3d.utility.Vector3dVector(new_data)
 
-    # print(np.asarray(old_pcd.points)[50,2])
-    # print(np.asarray(new_pcd.points)[50,2])
-
     # Check that the pointclouds are different
     if old_pcd.points != new_pcd.points and np.asarray(old_pcd.points).size != 0:
 
-        # print(np.asarray(old_pcd.points)[50,2])
-        # print(np.asarray(new_pcd.points)[50,2])
-        # print("old is NOT new\n")
-        print("do icp")
+        ############################################################
+        draw_registration_result(old_pcd, new_pcd, np.identity(4))
+        ############################################################
         
         # Conduct ICP registration
         icp_registration(old_pcd, new_pcd)
@@ -115,7 +112,8 @@ def laser_callback(data):
     # Clear the new_data variable for the next iteration of points
     new_data = np.array([])
 
-    # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
+    # # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
+
 
 #################################################################################
 # Subscriber for the trasnformation to calcualte the overall resultant transform 
@@ -124,14 +122,14 @@ def icp_transformation_callback(data):                                          
 
     global icp_transformation_matrix, result                                                    # result is float64
 
+    # Add copy
+    result_temp = copy.deepcopy(result)
+
     # Convert data into a numpy matrix
     icp_transformation_matrix = np.reshape(np.array(data.data), (4, 4))                         # float64
 
-    # Call the subscriber for the frame transformation
-    # rospy.Subscriber("TF_transformation", Floats, tf_matrix_callback, queue_size=1)
-
     # Multiply the two matrices
-    result = np.matmul(result, icp_transformation_matrix)                                       # float64
+    result = np.matmul(icp_transformation_matrix, result_temp)                                  # float64
 
     # print("\n\nframes transformation:")
     # print(type(transformation_frames))
@@ -144,85 +142,6 @@ def icp_transformation_callback(data):                                          
     # Add the current x and y pose positions to the odom lists
     icpX.append(result[0, 3])                                                                   # float64
     icpY.append(result[1, 3])                                                                   # float64
-
-
-#################################################################################
-# NOT USED!!!!!!!!!!!!!!!!!!
-# tf callback multiplies the two matrices and 
-def tf_matrix_callback(data):
-
-    global result
-
-    print("\n\n\n\n\nIf here then still goin in callback\n\n\n\n\n\n")
-
-    # Convert data into a numpy 4x4 matrix
-    transformation_frames = np.reshape(np.array(data.data), (4, 4))
-
-    # Multiply the two matrices
-    result = np.matmul(result, icp_transformation_matrix)
-
-    # print("\n\nframes transformation:")
-    # print(type(transformation_frames))
-    # print("icp transformation:")
-    # print(type(icp_transformation_matrix))
-    # print("Product of the start with icp results:")
-    # print(result)
-    # print("\n\n")
-
-    # Add the current x and y pose positions to the odom lists
-    icpX.append(result[0, 3])
-    icpY.append(result[1, 3])
-
-
-#################################################################################
-# Convert quaternion into a rotation matrix
-def quaternion_to_rotation_matrix(Q):
-    q0 = Q[0]
-    q1 = Q[1]
-    q2 = Q[2]
-    q3 = Q[3]
-
-    # Each element of the rot matrix using the conversion equation
-    p00 = 2 * (q0 * q0 + q1 * q1) - 1   # First row
-    p01 = 2 * (q1 * q2 - q0 * q3)
-    p02 = 2 * (q1 * q3 + q0 * q2)
-    p10 = 2 * (q1 * q2 + q0 * q3)       # Second row
-    p11 = 2 * (q0 * q0 + q2 * q2) - 1
-    p12 = 2 * (q2 * q3 - q0 * q1)
-    p20 = 2 * (q1 * q3 - q0 * q2)       # Third row
-    p21 = 2 * (q2 * q3 + q0 * q1)
-    p22 = 2 * (q0 * q0 + q3 * q3) - 1
-
-    # Rotation matrix
-    rotation_matrix = np.array([[p00, p01, p02],
-                                [p10, p11, p12],
-                                [p20, p21, p22]])
-    return rotation_matrix
-
-#################################################################################
-# Get transformation matrix from rotation in quaternions and translation vector
-# NOT USED!!!!!!!!!!!!!!!!!!! - publishes the tf transform
-def get_transformation_matrix(quats, trans_matrix):
-    
-    # Change quaternion to rotation matrix
-    rot_matrix = quaternion_to_rotation_matrix(quats)   # type: numpy.ndarray
-
-    # Convert to numpy array
-    trans_matrix = np.array(trans_matrix)       # type: numpy.ndarray
-
-    # Create the transformation matrix
-    tf_matrix = np.array([[rot_matrix[0,0], rot_matrix[0,1], rot_matrix[0,2], trans_matrix[0]],
-                         [rot_matrix[1,0], rot_matrix[1,1], rot_matrix[1,2], trans_matrix[1]],
-                         [rot_matrix[2,0], rot_matrix[2,1], rot_matrix[2,2], trans_matrix[2]],
-                         [0, 0, 0, 1]])
-
-    # Publish the transformation
-    matrix_flat = tf_matrix.flatten()
-    
-    # Publish the ICP transformation as an array - needs to be float32
-    matrix_flat = np.array(matrix_flat, dtype=np.float32)
-    tf_pub.publish(matrix_flat)
-
 
 #################################################################################
 # Function sourced from Open3D Tutorials - visualises the alignment of the points
@@ -241,6 +160,9 @@ def draw_registration_result(source, target, transformation):
 def icp_registration(source, target):
 
     global reg_p2p
+
+    source_temp = copy.deepcopy(source)
+    target_temp = copy.deepcopy(target)
     
     # Threshold for ICP correspondences
     threshold = 0.2
@@ -248,15 +170,18 @@ def icp_registration(source, target):
     # Initial transformation is estimated as the identiy matrix
     init_trans = np.identity(4)
 
+    print(source)
+    print(target)
+
     # print("Evaluation of initial alignment")
     evaluation = o3d.registration.evaluate_registration(
-        source, target, threshold, init_trans)
+        source_temp, target_temp, threshold, init_trans)
     # print(evaluation)
     # draw_registration_result(source, target, init_trans)
 
     # print("\nTransformation from point-to-point ICP")
     reg_p2p = o3d.registration.registration_icp(
-        source, target, threshold, init_trans,
+        source_temp, target_temp, threshold, init_trans,
         o3d.registration.TransformationEstimationPointToPoint(),
         o3d.registration.ICPConvergenceCriteria(max_iteration=1000))
     # print(reg_p2p)
@@ -285,13 +210,11 @@ def icp_registration(source, target):
 def main():
 
     # Global vairables
-    global odomX, odomY, new_data, new_pcd, old_pcd, icp_pub, tf_pub, icpX, icpY, result
-    # result = np.array([[1, 0, 0, 0.1],
-    #                    [0, 1, 0, 0.1],
-    #                    [0, 0, 1, 0],
-    #                    [0, 0, 0, 1]], dtype=np.float64)
-    result = np.array([[1, 0, 0, -0.43799233],
-                       [0, 1, 0, 0.81260926],
+    global odomX, odomY, new_data, new_pcd, old_pcd, icp_pub, icpX, icpY, result
+
+    # Global variable initialisation
+    result = np.array([[1, 0, 0, 0],
+                       [0, 1, 0, 0],
                        [0, 0, 1, 0],
                        [0, 0, 0, 1]], dtype=np.float64)
     odomX = []
@@ -306,7 +229,6 @@ def main():
 
     # Publisher for publishing the point cloud
     icp_pub = rospy.Publisher("ICP_transformation", Floats, queue_size=1)
-    tf_pub = rospy.Publisher("TF_transformation", Floats, queue_size=1)         # NOT USED
 
     try:
         # Initialise a new node
@@ -335,9 +257,6 @@ def main():
             except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                 continue
 
-            # Get the transformation from /odom (world) to the LIDAR scanner frame
-            get_transformation_matrix(tf_rot, tf_trans)    # type: numpy.ndarray
-
             # Subscribe to the ICP transformation published data
             rospy.Subscriber("ICP_transformation", Floats, icp_transformation_callback, queue_size=1)
                 
@@ -350,7 +269,7 @@ def main():
         plt.title("Odometry Readings Trajectory")
         plt.xlabel("X pose position")
         plt.ylabel("Y pose position")
-        plt.show()
+        # plt.show()
 
 
     except rospy.ROSInterruptException:
