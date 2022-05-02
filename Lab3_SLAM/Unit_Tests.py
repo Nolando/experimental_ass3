@@ -7,7 +7,7 @@ import geometry
 
 import random
 
-# from LandmarkSLAM_students import LeastSquaresSolver
+from LandmarkSLAM_students import LeastSquaresSolver
 
 # Covariance to experiment with
 pose_measurement_covariance = np.array([[1.,0.,0.],[0.,1.,0.],[0.,0.,1.]])*10**(-2)
