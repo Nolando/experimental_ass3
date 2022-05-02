@@ -174,10 +174,11 @@ class LeastSquaresSolver(object):
         measurements = 0
         # TODO Get the number of measurements stored in the states
         for i in range(num_states):
-            for j in self.states:
-                measurements+=1
-                j+=1
-            i+=1
+            measurements += len(self.states)
+            # for j in self.states:
+            #     measurements+=1
+            #     j+=1
+            # i+=1
         return measurements
 
 
