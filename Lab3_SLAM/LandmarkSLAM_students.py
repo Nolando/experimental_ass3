@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from statistics import covariance
 from numpy import indices
 import rospy
 import numpy as np
@@ -58,76 +59,36 @@ class LeastSquaresSolver(object):
         self.solver_start = None
         self.solver_finish = None
 
-    
+
 
     def solve(self, states,landmarks, debug = True):
                 
         self.states = states
         self.landmarks = landmarks
         robot = Robot()
-        '''
-        A matrix:
-        Num columns - n_states * 3 (for x, y, phi) + n_landmarks * 2 (for x,y)
-        Num rows - n_states * 3 (for x, y, phi) + n_measurements * 3
-        '''
 
-        '''
-        To Do List:
-
-            Understand math/theory
-            Construct/Update A and B matrix
-            Create Cholesky Solver
-            Update State Vector
-            Calculate number of measurements
-            Construct Systtem Function Creation
-        '''
-
-
-
-
-        '''
-        Some relevant pseudocode potentially? Gauss-Newton for Non Linear Least Squares
-
-        while 1
-            linearize F(theta) in theta^i       -> L(delta)
-            solve L(delta)' = 0                 get delta*
-            if norm(delta*) < threshold
-                done
-            update theta^(i+1) = theta^i + delta*
-        '''
         self.iter = 0
-
         self.done = False
 
         # Helper values to describe the system for debugging
         num_states = len(self.states)
         num_landmarks = len(self.landmarks)
-        num_measurements = self.get_num_measurements()
+        num_measurements = self.get_num_measurements(num_states, num_landmarks)
 
         print("Preparing to solve a system with {} poses, {} landmarks and a total {} measurements between them.".format(num_states,num_landmarks,num_measurements))
         self.solver_start = time.time()
         
 
-
         while not self.done:
-
-            #robot = Robot(initial, odo, get_index)
             
-            # TODO Construct and Update A and b matrix
-            # state_dim = 3*num_states#(3*num_states, 1)
-            # landmark_dim = #(2*num_landmarks,1)
-            # measurement_dim = (2*num_measurements,1)
-
-            self.construct_system(num_states,num_landmarks,num_measurements)#state_dim, landmark_dim, measurement_dim)
+            # Construct and Update A and b matrix
+            self.construct_system(num_states,num_landmarks,num_measurements)
             self.construct_state_vec()          # Current robot poses, current landmarks 
 
-            # TODO Solve system
+            # Solve system
             delta_star = self.perform_cholesky_solve(self.A,self.b)
 
-            # TODO Update state vec
-            # VERY CRITICAL
-
-
+            self.update_vertices(delta_star)
 
             # Check if error less than threshold, logging
             if debug and self.iter%2 == 0:
@@ -150,18 +111,6 @@ class LeastSquaresSolver(object):
     # Performs solving of system
     def perform_cholesky_solve(self, A, b):
 
-
-        # Some important equations from lecture slides
-
-        # A^T A delta = -A^T b
-        # A^T A = LL^T
-        # Solve LL^T delta = -A^T b by forward substituting Ly = -A^T b (lower triangular), and then back substituting L^T delta = y (upper triangular)
-        #  x_m = (b_m - Sum between i=1 and m-1 (l_(m,i)x_i)/l_(m,m)
-
-
-
-        #TODO Set LHS and RHS
-
         left_hs = np.matmul(A.T, A)
         right_hs = np.matmul(-A.T, b)
 
@@ -170,121 +119,112 @@ class LeastSquaresSolver(object):
         return cho_solve((LLt,low), right_hs)
 
     # Calculate total number of measurements from states
-    def get_num_measurements(self):
-        measurements = 0
-        # TODO Get the number of measurements stored in the states
-        for i in range(num_states):
-            measurements += len(self.states)
-            # for j in self.states:
-            #     measurements+=1
-            #     j+=1
-            # i+=1
+    def get_num_measurements(self, num_states, num_landmarks):
+
+        measurements = num_states * num_landmarks
         return measurements
 
 
     def construct_system(self,num_state,num_landmark, num_measurement):
-        robot = Robot
-        landmark = Landmark
-        #num_state = state_dim/3
-        #num_landmarks = landmark_dim/2
-        #num_measurement = measurement_dim/2
-        # Constructing a linear system:
-        #       L(delta) = ||b||^2 + delta^T A^T b + 1/2 delta^T A^T A delta
-        #       A = Sigma ^(-T\2) J         weighted jacobians stacked in a matrix
-        #       b = - Sigma^(-T\2) r_0      residuals stacked in a vector
+        robot = Robot()
+        landmark = Landmark()
 
         '''
         A matrix:
         Num columns - n_states * 3 (for x, y, phi) + n_landmarks * 2 (for x,y)
-        Num rows - n_states * 3 (for x, y, phi) + n_measurements * 3
+        Num rows - n_states * 3 (for x, y, phi) + n_measurements * 2(???)
         '''
-        prior = np.zeros((3,3))
-        
-        
-        # TODO
-        # Preallocate the A matrix and b Vector.
 
+        # Initial previous pose is [0,0,0]
+        prev_pose = np.zeros((1,3))
         
-        self.A = np.zeros((len(state_dim)+3*len(measurement_dim),len(state_dim)+len(landmark_dim)))
-        self.b = np.zeros((len(num_states)*3+len(num_landmarks)*2),1)
-
-
         
+        # Initialise A and b
+        self.A = np.zeros((num_state*3+num_measurement*2,num_state*3+num_landmark*2))
+        self.b = np.zeros((num_state*3+num_measurement*2),1)
+
+        current_H_col = 0
 
         # Construct the top portion of the A matrix, you will need to go through your robot poses carefully.
-        #init_robot_pose = robot.get_initial()
-        #first_robot_pose = robot.predict_state(init_robot_pose)
+        # For each state
+        for state in range(num_state):
+            # Predict the current pose given the previous pose (where curr_pose is an artificial x_i)
+            curr_pose = robot.predict_state(prev_pose)
 
-        init_land = landmark.get_initial()
+            # New landmark?
 
-        #pred_motion, F_k, G_k = geometry.Absolute2RelativePose(init_robot, robot.)
+            # Calculate residual and Jacobians for motion
+            predicted_motion, F_k, G_k = geometry.Absolute2RelativePose(prev_pose, curr_pose)
+            residual_motion = predicted_motion - robot.get_odo()
 
-        # for i in range(num_state):
+            # Multiply by motion covariance
+            F_k = np.multiply(F_k, robot.get_covariance_processed())
+            G_k = np.multiply(G_k, robot.get_covariance_processed())
+            residual_motion = np.multiply(residual_motion, robot.get_covariance_processed())
             
-        #     curr_pose = robot.get_current()
-        #     next_pose = robot.predict_state(curr_pose)
-        #     curr_odo = robot.get_odo
-        #     pred_motion, F_k, G_k = geometry.Absolute2RelativePose(curr_pose, next_pose)
+            # Add to A matrix
+            index = robot.get_index()
+            for row in range(len(G_k)):
+                for col in range(len(row)):
+                    self.A[index*num_state*3+row,index*num_state*3+col] = G_k[row,col]
+                    if state != 0:
+                        self.A[(index+1)*num_state*3+row,index*num_state*3+col] = F_k[row,col]
 
-        #     curr_pose = robot.set_current(next_pose)
-        #     if i == robot.get_index:
-        #         self.A[i,i] = np.dot(G_k, robot.get_covariance_processed)
-        #     elif i+1 == robot.get_index:
-        #         self.A[i+1,i] = np.dot(F_k, robot.get_covariance_processed)
-        #     motion_residual = pred_motion - curr_odo
-        #     pred_measure, H_k, J_j = landmark.landmark_jacobs(robot.get_current)
-        #     measure_residual = pred_measure - init_land
-
-        #     if i == landmark.get_index:
-                
+            # Add to b matrix 
+            for row in range(len(residual_motion)):
+                self.b[index*3+row] = residual_motion(row)
 
 
+            # Error for the landmark measurements
+            for landmk in (robot.get_landmarks()):
+                predicted_measurement, H_k, J_j = geometry.Absolute2RelativeLandmark(curr_pose, landmark.get_current()) 
+                residual_measurement = predicted_measurement - robot.get_measurements(landmk)
 
-        # Measurement residuals = absolute2rel land - landmark measurement
-        # Motion residuals = absolute2rel pose - odometry
-        #for i in range(num_states):
-        #curr = Robot.get_current()
+                # Multiply by motion covariance
+                H_k = np.multiply(H_k, robot.get_covariance_processed())
+                J_j = np.multiply(J_j, robot.get_covariance_processed())
+                residual_measurement = np.multiply(residual_measurement, robot.get_covariance_processed())
 
-        # Update the A matrix
-        # 3x3 blocks
-        
-        # Obtain predictions and Jacobians wrt Odo/Robot at present
-        # Update jacobians with covariance 
-        # Update A matrix     
-        # Update the b vector
-        
-        # Now move to the lower portion of the A matrix. You will need a datum partway down the matrix
+                for row in range(len(J_j)):
+                    for col in range(len(row)):
+                        self.A[num_state*3+state*num_landmark*2+landmk*2+row,num_state*3+landmk] = J_j[row,col]
 
-        # For each measurement
-        # Iterate through each landmark vec
-        # Reference landmark and pull prediction and jacobians wrt the measured position
-        # Update jacobians with covariance 
-        # Update lower part of A matrix
-        # Update the b vector
-        # Increment
+                for row in range(len(H_k)):
+                    for col in range(len(row)):
+                        self.A[num_state*3+state*num_landmark*2+landmk*2+row,current_H_col] = H_k[row,col]
+
+                for row in range(len(residual_measurement)):
+                    self.b[num_state*3+index*num_landmark+landmk*2+row] = residual_motion(row)
+
+            current_H_col += 1
+
 
     # Construct a vector of the state values
     def construct_state_vec(self):
-        # TODO Construct here the state vector Theta
-
         # This is a column vector. All poses on top of all landmarks
-        # 
         # Total dimension = 3*num_poses + 2*num_landmarks
 
-        state_dim = num_states*3 + num_landmarks*2
+        state_dim = len(self.states)*3 + len(self.landmarks)*2
 
-        # Create empty state vector of size state_dim x 1
-        temp_state_vec = np.zeros((state_dim, 1))
-        self.state_vec = temp_state_vec
+        for state in self.states:
+            for value in state:
+                self.state_vec.append(value)
         
-    def update_vertices(self):
+        for landmk in self.landmarks:
+            for value in landmk:
+                self.state_vec.append(value)
 
         
-        # TODO Update the current stored positions/poses of landmarks/robot
+    def update_vertices(self, delta_star):
 
-        
-        
+        new_state_vec = self.state_vec + delta_star
 
+        for state_idx in range(len(self.states)):
+            self.states[state_idx] = new_state_vec[state_idx]
+        
+        for landmk_idx in range(len(self.landmarks)):
+            self.landmarks[landmk_idx] = new_state_vec[landmk_idx+len(self.states)]
+        
 
 
 
