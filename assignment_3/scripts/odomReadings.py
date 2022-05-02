@@ -2,17 +2,25 @@
 # Machine Unlearning
 
 # Subscribe to the odom topic to get the turtlebot odometry readings  
+from numpy import dtype
 import rospy
 import copy
 import numpy as np
 import open3d as o3d
 import tf                                       # /tf
+
 import geometry_msgs.msg
+import laser_geometry.laser_geometry as lg
+import sensor_msgs.point_cloud2 as pc2
+from sensor_msgs.msg import PointCloud2
+import ros_numpy
+
 from nav_msgs.msg import Odometry               # /odom
 import matplotlib.pyplot as plt
 from sensor_msgs.msg import LaserScan           # /scan
 from rospy.numpy_msg import numpy_msg
 from rospy_tutorials.msg import Floats
+
 
 #################################################################################
 # Subscriber callback function for odom saves data
@@ -93,6 +101,24 @@ def laser_callback(data):
     # 3 rows for open3d Vector3dVector format
     # new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])   # float64
 
+
+    lp = lg.LaserProjection()
+    pc2_msg = lp.projectLaser(data)
+    test = np.array(pc2_msg)
+    # print(pc2_msg)
+
+    pc = ros_numpy.numpify(pc2_msg)
+
+    # print(pc)
+    height = pc2_msg.height
+    width = pc2_msg.width
+    np_points = np.zeros((height * width, 3), dtype=np.float64)
+    np_points[:, 0] = np.resize(pc['x'], height * width)
+    np_points[:, 1] = np.resize(pc['y'], height * width)
+    np_points[:, 2] = np.resize(pc['z'], height * width)
+
+    # print(np_points.shape)
+
     zeros_row = np.zeros(laser_ranges.size/2)
     new_data = np.vstack([laser_ranges[0:180], laser_ranges[180:360], zeros_row])
 
@@ -101,10 +127,10 @@ def laser_callback(data):
     #####################################################################################################
 
     # Transpose the matrix for open3d format input
-    new_data = np.transpose(new_data)
+    # new_data = np.transpose(new_data)
 
     # Convert the numpy array to open3d type
-    new_pcd.points = o3d.utility.Vector3dVector(new_data)
+    new_pcd.points = o3d.utility.Vector3dVector(np_points)
 
     # print(np.asarray(new_pcd.points))
 
@@ -114,7 +140,7 @@ def laser_callback(data):
         ############################################################
         # print('Average of old_pcd ', np.average(np.asarray(old_pcd.points)))
         # print('Average of new_pcd ', np.average(np.asarray(new_pcd.points)))
-        draw_registration_result(old_pcd, new_pcd, np.identity(4))
+        # draw_registration_result(old_pcd, new_pcd, np.identity(4))
         ############################################################
         
         # Conduct ICP registration
@@ -175,13 +201,13 @@ def icp_registration(source, target):
     target_temp = copy.deepcopy(target)
     
     # Threshold for ICP correspondences
-    threshold = 0.03
+    threshold = 0.5
 
     # Initial transformation is estimated as the identiy matrix
     init_trans = np.identity(4)
 
-    print(source)
-    print(target)
+    print(np.asarray(source.points))
+    print(np.asarray(target.points))
 
     # print("Evaluation of initial alignment")
     evaluation = o3d.registration.evaluate_registration(
