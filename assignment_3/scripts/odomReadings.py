@@ -103,7 +103,8 @@ def laser_callback(data):
         # new_data = np.append(new_data, laser_ranges,axis=0)
 
     # print(laser_ranges[0:120])
-    new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])
+    # new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])
+    new_data = np.vstack([laser_ranges, laser_ranges, laser_ranges])
     # print(laser_ranges.shape)
     # new_data = np.split(laser_ranges, 3)
 
@@ -267,8 +268,8 @@ def main():
 
     # Global vairables
     global odomX, odomY, new_data, new_pcd, old_pcd, icp_pub, tf_pub, icpX, icpY, result
-    result = np.array([[1, 0, 0, 0.1],
-                       [0, 1, 0, 0.1],
+    result = np.array([[1, 0, 0, 1],
+                       [0, 1, 0, 1],
                        [0, 0, 1, 0.1],
                        [0, 0, 0, 1]])
     odomX = []
@@ -320,8 +321,8 @@ def main():
             rate.sleep()
 
         # Plot the odometry trajectory 
-        plt.plot(odomX, odomY, icpX, icpY)
-        # plt.plot(icpX, icpY)
+        # plt.plot(odomX, odomY, icpX, icpY)
+        plt.plot(icpX, icpY)
         plt.title("Odometry Readings Trajectory")
         plt.xlabel("X pose position")
         plt.ylabel("Y pose position")
