@@ -26,8 +26,8 @@ def odom_callback(data):
     odom_twist = data.twist
 
     # Add the current x and y pose positions to the odom lists
-    odomX.append(odom_pose.pose.position.x)
-    odomY.append(odom_pose.pose.position.y)
+    odomX.append(np.float64(odom_pose.pose.position.x))                                         # float64
+    odomY.append(np.float64(odom_pose.pose.position.y))                                         # float64
 
 ####################### Relative and Absolute Error #############################
 # Function to calculate the relative and absolute trajectory error 
@@ -83,45 +83,31 @@ def laser_callback(data):
     global new_data, laser_ranges
 
     # Update old pointcloud variable - NEED TO COPY OR ELSE IS PYTHON REFERENCES
+    # old_pcd.points = copy.deepcopy(new_pcd.points)
     old_pcd = copy.deepcopy(new_pcd)
 
-    # Save the ranges and intensities from the odometry readings - FIDDLE AROUND WITH FLOAT32 OR FLOAT64
-    # laser_ranges = np.asarray([data.ranges], np.float64)          # size: 1 x 360
-    laser_ranges = np.asarray(data.ranges)                          # size: (360,)
+    # Save the ranges from the odometry readings
+    laser_ranges = np.asarray(data.ranges)                                                      # float64
 
-    #############################################################################
-    ########## Test if 3 rows of diff stuff of same stuff is better #############
-    #############################################################################
-    # If the variable is currently empty, will need to set new_data first
-    # if new_data.size < 360:
-    #     new_data = laser_ranges
-
-    # Check the data is not the same
-    # elif new_data is not laser_ranges:
-
-        # Add 1D LIDAR data array to the next available row
-        # new_data = np.append(new_data, laser_ranges,axis=0)
-
-    # print(laser_ranges[0:120])
-    # new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])
-    new_data = np.vstack([laser_ranges, laser_ranges, laser_ranges])
-    # print(laser_ranges.shape)
-    # new_data = np.split(laser_ranges, 3)
-
-    #############################################################################
-    #############################################################################
-
-    # Test if the variable has 3 columns - means n x 3 is full yet
-    # if new_data.size == 1080:
+    # 3 rows for open3d Vector3dVector format
+    new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])   # float64
 
     # Transpose the matrix for open3d format input
-    new_data = np.transpose(new_data)                       # size: 360 x 3
+    new_data = np.transpose(new_data)
 
     # Convert the numpy array to open3d type
     new_pcd.points = o3d.utility.Vector3dVector(new_data)
 
+    # print(np.asarray(old_pcd.points)[50,2])
+    # print(np.asarray(new_pcd.points)[50,2])
+
     # Check that the pointclouds are different
     if old_pcd.points != new_pcd.points and np.asarray(old_pcd.points).size != 0:
+
+        # print(np.asarray(old_pcd.points)[50,2])
+        # print(np.asarray(new_pcd.points)[50,2])
+        # print("old is NOT new\n")
+        print("do icp")
         
         # Conduct ICP registration
         icp_registration(old_pcd, new_pcd)
@@ -134,38 +120,54 @@ def laser_callback(data):
 #################################################################################
 # Subscriber for the trasnformation to calcualte the overall resultant transform 
 # and get the x and y trajectory
-def icp_transformation_callback(data):
+def icp_transformation_callback(data):                                                          # data.data is a tuple
 
-    global icp_transformation_matrix
+    global icp_transformation_matrix, result                                                    # result is float64
 
     # Convert data into a numpy matrix
-    icp_transformation_matrix = np.reshape(np.array(data.data), (4, 4))
-
-    # print(icp_transformation_matrix)
+    icp_transformation_matrix = np.reshape(np.array(data.data), (4, 4))                         # float64
 
     # Call the subscriber for the frame transformation
-    rospy.Subscriber("TF_transformation", Floats, tf_matrix_callback, queue_size=1)
+    # rospy.Subscriber("TF_transformation", Floats, tf_matrix_callback, queue_size=1)
+
+    # Multiply the two matrices
+    result = np.matmul(result, icp_transformation_matrix)                                       # float64
+
+    # print("\n\nframes transformation:")
+    # print(type(transformation_frames))
+    # print("icp transformation:")
+    # print(type(icp_transformation_matrix))
+    # print("Product of the start with icp results:")
+    # print(result)
+    # print("\n\n")
+
+    # Add the current x and y pose positions to the odom lists
+    icpX.append(result[0, 3])                                                                   # float64
+    icpY.append(result[1, 3])                                                                   # float64
+
 
 #################################################################################
+# NOT USED!!!!!!!!!!!!!!!!!!
 # tf callback multiplies the two matrices and 
 def tf_matrix_callback(data):
 
     global result
 
+    print("\n\n\n\n\nIf here then still goin in callback\n\n\n\n\n\n")
+
     # Convert data into a numpy 4x4 matrix
     transformation_frames = np.reshape(np.array(data.data), (4, 4))
 
     # Multiply the two matrices
-    # result = transformation_frames * icp_transformation_matrix
     result = np.matmul(result, icp_transformation_matrix)
 
     # print("\n\nframes transformation:")
     # print(type(transformation_frames))
     # print("icp transformation:")
     # print(type(icp_transformation_matrix))
-    print("Product of the start with icp results:")
-    print(result)
-    print("\n\n")
+    # print("Product of the start with icp results:")
+    # print(result)
+    # print("\n\n")
 
     # Add the current x and y pose positions to the odom lists
     icpX.append(result[0, 3])
@@ -199,6 +201,7 @@ def quaternion_to_rotation_matrix(Q):
 
 #################################################################################
 # Get transformation matrix from rotation in quaternions and translation vector
+# NOT USED!!!!!!!!!!!!!!!!!!! - publishes the tf transform
 def get_transformation_matrix(quats, trans_matrix):
     
     # Change quaternion to rotation matrix
@@ -238,26 +241,41 @@ def draw_registration_result(source, target, transformation):
 def icp_registration(source, target):
 
     global reg_p2p
-        
+    
     # Threshold for ICP correspondences
-    threshold = 0.02
+    threshold = 0.2
 
     # Initial transformation is estimated as the identiy matrix
     init_trans = np.identity(4)
 
-    # Calculate transformation
+    # print("Evaluation of initial alignment")
+    evaluation = o3d.registration.evaluate_registration(
+        source, target, threshold, init_trans)
+    # print(evaluation)
+    # draw_registration_result(source, target, init_trans)
+
+    # print("\nTransformation from point-to-point ICP")
     reg_p2p = o3d.registration.registration_icp(
         source, target, threshold, init_trans,
         o3d.registration.TransformationEstimationPointToPoint(),
-        o3d.registration.ICPConvergenceCriteria(max_iteration=10000))
+        o3d.registration.ICPConvergenceCriteria(max_iteration=1000))
+    # print(reg_p2p)
+    # print("\nTransformation is:")
+    # print(reg_p2p.transformation)
+    # draw_registration_result(source, target, reg_p2p.transformation)
 
-    #################################################################################
+    # Calculate transformation
+    # reg_p2p = o3d.registration.registration_icp(
+    #     source, target, threshold, init_trans,
+    #     o3d.registration.TransformationEstimationPointToPoint(),
+    #     o3d.registration.ICPConvergenceCriteria(max_iteration=10000))
+
     # draw_registration_result(source, target, init_trans)
-    #################################################################################
     
     # Flatten the matrix for publishing
-    icp_transformation = reg_p2p.transformation.flatten()
-    flat_array = np.array(icp_transformation, dtype=np.float32)
+    icp_transformation = reg_p2p.transformation.flatten()                                       # float64
+
+    flat_array = np.array(icp_transformation, dtype=np.float32)                                 # float32
     
     # Publish the ICP transformation as an array - needs to be float32
     icp_pub.publish(flat_array)
@@ -268,10 +286,14 @@ def main():
 
     # Global vairables
     global odomX, odomY, new_data, new_pcd, old_pcd, icp_pub, tf_pub, icpX, icpY, result
-    result = np.array([[1, 0, 0, 1],
-                       [0, 1, 0, 1],
-                       [0, 0, 1, 0.1],
-                       [0, 0, 0, 1]])
+    # result = np.array([[1, 0, 0, 0.1],
+    #                    [0, 1, 0, 0.1],
+    #                    [0, 0, 1, 0],
+    #                    [0, 0, 0, 1]], dtype=np.float64)
+    result = np.array([[1, 0, 0, -0.43799233],
+                       [0, 1, 0, 0.81260926],
+                       [0, 0, 1, 0],
+                       [0, 0, 0, 1]], dtype=np.float64)
     odomX = []
     odomY = []
     icpX = []
@@ -284,7 +306,7 @@ def main():
 
     # Publisher for publishing the point cloud
     icp_pub = rospy.Publisher("ICP_transformation", Floats, queue_size=1)
-    tf_pub = rospy.Publisher("TF_transformation", Floats, queue_size=1)
+    tf_pub = rospy.Publisher("TF_transformation", Floats, queue_size=1)         # NOT USED
 
     try:
         # Initialise a new node
@@ -298,6 +320,8 @@ def main():
 
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
+
+            print("loop start")
 
             # Subscribe to odometry, scan topics
             rospy.Subscriber("/odom", Odometry, odom_callback, queue_size=1)
@@ -321,8 +345,8 @@ def main():
             rate.sleep()
 
         # Plot the odometry trajectory 
-        # plt.plot(odomX, odomY, icpX, icpY)
-        plt.plot(icpX, icpY)
+        plt.plot(odomX, odomY, icpX, icpY)
+        # plt.plot(icpX, icpY)
         plt.title("Odometry Readings Trajectory")
         plt.xlabel("X pose position")
         plt.ylabel("Y pose position")
