@@ -19,19 +19,25 @@ from rospy_tutorials.msg import Floats
 def odom_callback(data):
 
     # Global variables for odom data
-    global odom_pose, odom_twist
+    global odom_pose, odom_twist, odomNextX, odomNextY
 
     # Save the data from the odometry readings
     odom_pose = data.pose
     odom_twist = data.twist
 
+    # Next odom x and y values
+    odomNextX = np.float64(odom_pose.pose.position.x)
+    odomNextY = np.float64(odom_pose.pose.position.y)
+
     # Add the current x and y pose positions to the odom lists
-    odomX.append(np.float64(odom_pose.pose.position.x))                                         # float64
-    odomY.append(np.float64(odom_pose.pose.position.y))                                         # float64
+    odomX.append(odomNextX)                                         # float64
+    odomY.append(odomNextY)                                         # float64
 
 ####################### Relative and Absolute Error #############################
 # Function to calculate the relative and absolute trajectory error 
 def error(lidarDataX, lidarDataY, odomDataX, odomDataY):
+
+    print("Calculating errors: ")
 
     # Error lists for average calculation
     relativeErrorsX = []
@@ -40,7 +46,7 @@ def error(lidarDataX, lidarDataY, odomDataX, odomDataY):
     absoluteErrorsY = []
 
     # Set the data length to the length of the smaller data set
-    if odomDataX > lidarDataX:
+    if len(odomDataX) > len(lidarDataX):
         dataLength = len(lidarDataX)
     else:
         dataLength = len(odomDataX)
@@ -49,10 +55,10 @@ def error(lidarDataX, lidarDataY, odomDataX, odomDataY):
     for index in range(0, dataLength):
 
         # Calculate the relative and absolute error for the current pair of points
-        currentRelativeX = abs(odomDataX - lidarDataX)
-        currentRelativeY = abs(odomDataY - lidarDataY)
-        currentAbsoluteX = currentRelativeX/odomDataX
-        currentAbsoluteY = currentRelativeY/odomDataY
+        currentRelativeX = abs(odomDataX[index] - lidarDataX[index])
+        currentRelativeY = abs(odomDataY[index] - lidarDataY[index])
+        currentAbsoluteX = currentRelativeX/odomDataX[index]
+        currentAbsoluteY = currentRelativeY/odomDataY[index]
 
         # Add the current errors to their respective lists
         relativeErrorsX.append(currentRelativeX)
@@ -79,7 +85,8 @@ def error(lidarDataX, lidarDataY, odomDataX, odomDataY):
     averageAbsoluteX = totalAbsoluteX/len(absoluteErrorsX)
     averageAbsoluteY = totalAbsoluteY/len(absoluteErrorsY)
 
-    return averageRelativeX, averageRelativeY, averageAbsoluteX, averageAbsoluteY
+    print("Average Relative Error: ", averageRelativeX, averageRelativeY)
+    print("Average Absolute Error: ", averageAbsoluteX, averageAbsoluteY)
 
 #################################################################################
 # Subscriber callback function for the laser scan saves data
@@ -147,7 +154,7 @@ def laser_callback(data):
 # and get the x and y trajectory
 def icp_transformation_callback(data):                                                          # data.data is a tuple
 
-    global icp_transformation_matrix, result                                                    # result is float64
+    global icp_transformation_matrix, result, icpNextX, icpNextY                                # result is float64
 
     # Add copy
     result_temp = copy.deepcopy(result)
@@ -166,9 +173,14 @@ def icp_transformation_callback(data):                                          
     temp_result = np.matmul(frame_conv, result_temp)
     result = np.matmul(temp_result, icp_transformation_matrix)
 
+    # Next x and y values for icp
+    icpNextX = -1 * result[0, 3]
+    icpNextY = -1 * result[1, 3]
+
     # Add the current x and y pose positions to the odom lists
-    icpX.append(-1 * result[0, 3])                                                                   # float64
-    icpY.append(-1 * result[1, 3])                                                                   # float64
+    icpX.append(icpNextX)                                                                   # float64
+    icpY.append(icpNextY)     
+    
 
 #################################################################################
 # Function sourced from Open3D Tutorials - visualises the alignment of the points
@@ -215,11 +227,52 @@ def icp_registration(source, target):
     # Publish the ICP transformation as an array - needs to be float32
     icp_pub.publish(flat_array)
 
+# def realTimeErrors(icpNextX, icpNextY, odomNextX, odomNextY):
+    
+#     # Limit value for the current iteration
+#     iterationLimit = 10
+
+#     # Calculate the next errors
+#     nextRelativeX = abs(icpNextX - odomNextX)                                                              # float64
+#     nextRelativeY = abs(icpNextY - odomNextY)                                                              # float64
+#     nextAbsoluteX = nextRelativeX/odomNextX
+#     nextAbsoluteY = nextRelativeY/odomNextY
+
+#     # Add to the error sums
+#     realRx += nextRelativeX
+#     realRy += nextRelativeY
+#     realAx += nextAbsoluteX
+#     realAy += nextAbsoluteY
+#     print("Hello")
+#     # Check if the new average error is ready 
+#     if iterations > iterationLimit:
+        
+#         # Display the new average errors
+#         #print(realRx/10)
+#         print("DONE")
+#         # Reset the error lists
+#         realRx = 0
+#         realRy = 0
+#         realAx = 0
+#         realAy = 0
+
+#     # Update iterations
+#     iterations += 1
+
+
 #################################################################################
 def main():
 
     # Global vairables
-    global odomX, odomY, new_pcd, old_pcd, icp_pub, icpX, icpY, result
+    global odomX, odomY, new_pcd, old_pcd, icp_pub, icpX, icpY, result, iterations
+    #global realRx, realRy, realAx, realAy
+
+    #realRx = 0
+    #realRy = 0
+    #realAx = 0
+    #realAy = 0
+
+    #iterations = 0
 
     # Global variable initialisation
     result = np.array([[1, 0, 0, 0],
@@ -248,8 +301,6 @@ def main():
         # Continuous loop while ROS is running
         while not rospy.is_shutdown():
 
-            print("while loop")
-
             # Subscribe to odometry, scan topics
             rospy.Subscriber("/odom", Odometry, odom_callback)#, queue_size=1)
             rospy.Subscriber("/scan", LaserScan, laser_callback)#, queue_size=1)
@@ -257,8 +308,13 @@ def main():
             # Subscribe to the ICP transformation published data
             rospy.Subscriber("ICP_transformation", Floats, icp_transformation_callback)#, queue_size=1)
                 
+            # Error calc and print function
+            #realTimeErrors(icpNextX, icpNextY, odomNextX, odomNextY)
+            
             # Sleep until next spin
             rate.sleep()
+
+        error(icpX, icpY, odomX, odomY)
 
         # Plot the odometry trajectory 
         plt.plot(odomX, odomY, icpX, icpY)
