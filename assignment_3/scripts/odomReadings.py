@@ -88,23 +88,33 @@ def laser_callback(data):
     global new_data, laser_ranges
 
     # Update old pointcloud variable - NEED TO COPY OR ELSE IS PYTHON REFERENCES
-    # old_pcd.points = copy.deepcopy(new_pcd.points)
     old_pcd = copy.deepcopy(new_pcd)
+
+    data_copy = copy.deepcopy(data)
 
     # Save the ranges from the odometry readings
     laser_ranges = np.asarray(data.ranges)                                                      # float64
+    laser_copy = copy.deepcopy(laser_ranges)
+
+    # Intensities for the odom readings
+    laser_intense = np.asarray(data.intensities)  
+    intense_copy = copy.deepcopy(laser_intense)
+
+    # Discard the values outside of the max and min ranges - can use this later for range filter
+    data_copy.ranges = tuple(laser_copy[(laser_copy > data.range_min) & (laser_copy < data.range_max)])
+    data_copy.intensities = tuple(intense_copy[(laser_copy > data.range_min) & (laser_copy < data.range_max)])
 
     #####################################################################################################
     # 3 rows for open3d Vector3dVector format
     # new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])   # float64
 
     # Format of the data is x and y, with z as zero
-    # zeros_row = np.zeros(laser_ranges.size/2)
-    # new_data = np.vstack([laser_ranges[0:180], laser_ranges[180:360], zeros_row])
+    # zeros_row = np.zeros(laser_copy.size/2)
+    # new_data = np.vstack([laser_copy[0:zeros_row.size], laser_copy[zeros_row.size:2*zeros_row.size], zeros_row])
 
     # Converting the LaserScan message into PointCloud2
     lp = lg.LaserProjection()
-    pc2_msg = lp.projectLaser(data)
+    pc2_msg = lp.projectLaser(data_copy)
 
     # Convert the PointCloud2 into a numpy array
     pc = ros_numpy.numpify(pc2_msg)
@@ -115,7 +125,6 @@ def laser_callback(data):
     np_points[:, 1] = np.resize(pc['y'], height * width)
     np_points[:, 2] = np.resize(pc['z'], height * width)
     #####################################################################################################
-
 
     # Convert the numpy array to open3d type
     new_pcd.points = o3d.utility.Vector3dVector(np_points)
@@ -131,7 +140,6 @@ def laser_callback(data):
         icp_registration(old_pcd, new_pcd)
 
     # # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
-    
 
 
 #################################################################################
@@ -151,18 +159,16 @@ def icp_transformation_callback(data):                                          
     frame_conv = np.array([[1, 0, 0, 0],
                            [0, 1, 0, 0],
                            [0, 0, 1, 0],
-                           [0, 0, 0, -1]], dtype=np.float64)
+                           [0, 0, 0, 1]], dtype=np.float64)
 
     # Multiply the two matrices
     # result = np.matmul(result_temp, icp_transformation_matrix)                                # float64
-    temp_result = np.matmul(frame_conv, result)
-    result = np.matmul(temp_result, np.linalg.inv(icp_transformation_matrix))
+    temp_result = np.matmul(frame_conv, result_temp)
+    result = np.matmul(temp_result, icp_transformation_matrix)
 
     # Add the current x and y pose positions to the odom lists
     icpX.append(-1 * result[0, 3])                                                                   # float64
     icpY.append(-1 * result[1, 3])                                                                   # float64
-
-    print("added point from icp")
 
 #################################################################################
 # Function sourced from Open3D Tutorials - visualises the alignment of the points
@@ -171,6 +177,7 @@ def draw_registration_result(source, target, transformation):
     target_temp = copy.deepcopy(target)
     source_temp.paint_uniform_color([1, 0.706, 0])
     target_temp.paint_uniform_color([0, 0.651, 0.929])
+    source_temp.transform(transformation)
     o3d.visualization.draw_geometries([source_temp, target_temp])
 
 #################################################################################
@@ -185,19 +192,24 @@ def icp_registration(source, target):
     target_temp = copy.deepcopy(target)
     
     # Threshold for ICP correspondences
-    threshold = 0.01
+    threshold = 0.03
 
     # Initial transformation is estimated as the identiy matrix
     init_trans = np.identity(4)
 
+    # Conduct point to point ICP
     reg_p2p = o3d.pipelines.registration.registration_icp(
         source_temp, target_temp, threshold, init_trans,
         o3d.pipelines.registration.TransformationEstimationPointToPoint(),
         o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=3000))
+
+    ############################################################
+    # draw_registration_result(source_temp, target_temp, reg_p2p.transformation)
+    ############################################################
+    print(reg_p2p.transformation)
     
     # Flatten the matrix for publishing
     icp_transformation = reg_p2p.transformation.flatten()                                       # float64
-
     flat_array = np.array(icp_transformation, dtype=np.float32)                                 # float32
     
     # Publish the ICP transformation as an array - needs to be float32
