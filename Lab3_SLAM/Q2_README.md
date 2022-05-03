@@ -70,7 +70,7 @@ source devel/setup.bash
 Running the unit tests:
 1. Terminal 1 - run unit tests
 ```bash
-python src/Lab3_SLAM/Unit_Tests.py
+python src/experimental_ass3/Lab3_SLAM/Unit_Tests.py
 ```
 
 For running the simulated environment: 
