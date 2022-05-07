@@ -26,8 +26,6 @@ def plotState(robot_states, landmark_states, unit_number,flag):
     odo_x = []
     odo_y = []
 
-
-
     for i in range(num_states):
         traj_x.append(robot_states[i].get_current()[0])
         traj_y.append(robot_states[i].get_current()[1])
@@ -59,6 +57,7 @@ def plotState(robot_states, landmark_states, unit_number,flag):
     plt.legend(["Solved Trajectory","Odometry","Solved Landmark","Measured Landmark"])
     plt.savefig("output_test_{}.png".format(unit_number))
 
+    plt.show()
 
 def unit_test():
 
@@ -126,7 +125,7 @@ def eval_unit_test(soln_robot, robot_poses, soln_landmark, landmark_gt,unit_numb
         print( "SOLVED: " + str(robot.get_current().T))
         error = robot_poses[:,i].reshape(3,1)-robot.get_current().reshape(3,1)
         print("ERROR: " + str(error.T))
-        if np.linalg.norm(error) > 1e-1:
+        if np.linalg.norm(error) > 1:#1e-1:
             print("FAILED")
             fail_flag = True
         else:
@@ -141,7 +140,7 @@ def eval_unit_test(soln_robot, robot_poses, soln_landmark, landmark_gt,unit_numb
         print("SOLVED: " + str(landmark.get_current().T))
         error = landmark_gt[:,i].reshape(2,1)-landmark.get_current().reshape(2,1)
         print("ERROR: "+str(error.T))
-        if np.linalg.norm(error) > 1e-1:
+        if np.linalg.norm(error) > 1:#1e-1:
             print("FAILED")
             fail_flag = True
         else:

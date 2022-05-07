@@ -179,6 +179,8 @@ class LeastSquaresSolver(object):
 
             # Error for the landmark measurements
             for landmk in (robot.get_landmarks()):
+                landmark = self.landmarks[landmk]
+
                 predicted_measurement, H_k, J_j = geometry.Absolute2RelativeXY(curr_pose[:,0], landmark.get_current()) 
                 residual_measurement = predicted_measurement - robot.get_measurements()
 
@@ -189,11 +191,11 @@ class LeastSquaresSolver(object):
 
                 for row in range(len(J_j)):
                     for col in range(len(J_j)):
-                        self.A[num_state*3+state*num_landmark*2+landmk*2+row,num_state*3+landmk*2] = float(J_j[row,col])
+                        self.A[num_state*3+state*num_landmark*2+landmk*2+row,num_state*3+landmk*2+col] = float(J_j[row,col])
 
                 for row in range(len(H_k)):
                     for col in range(len(J_j)):
-                        self.A[num_state*3+state*num_landmark*2+landmk*2+row,current_H_col*3] = float(H_k[row,col])
+                        self.A[num_state*3+state*num_landmark*2+landmk*2+row,current_H_col*3+col] = float(H_k[row,col])
 
                 for row in range(len(residual_measurement)):
                     self.b[num_state*3+state*num_landmark+landmk*2+row] = float(residual_motion[row])
@@ -221,13 +223,18 @@ class LeastSquaresSolver(object):
         
     def update_vertices(self, delta_star, state_vec):
 
-        new_state_vec = state_vec + delta_star
+        new_state_vec = np.zeros(len(state_vec))
+        for i in range(len(state_vec)):
+            new_state_vec[i] = state_vec[i] + float(delta_star[i])
 
         for state_idx in range(len(self.states)):
-            self.states[state_idx] = new_state_vec[state_idx]
+            current = new_state_vec[state_idx*3:(state_idx+1)*3]
+            self.states[state_idx].set_current(current)
         
+        offset = len(self.states)*3
         for landmk_idx in range(len(self.landmarks)):
-            self.landmarks[landmk_idx] = new_state_vec[landmk_idx+len(self.states)]
+            current = new_state_vec[offset + landmk_idx*2 : offset+(landmk_idx+1)*2]
+            self.landmarks[landmk_idx].set_current(current)
         
 
 
