@@ -136,7 +136,8 @@ class LeastSquaresSolver(object):
         # Initial previous pose is [0,0,0]
         prev_pose = np.array((0,0,0))
         prev_pose = np.reshape(prev_pose, (3,1))
-        
+        prev_pose = prev_pose.astype('float')
+
         # Initialise A and b
         self.A = np.zeros((num_state*3+num_measurement*2,num_state*3+num_landmark*2))
         self.b = np.zeros(((num_state*3+num_measurement*2),1))
@@ -149,15 +150,13 @@ class LeastSquaresSolver(object):
 
             robot = self.states[state]
 
-            # Predict the current pose given the previous pose (where curr_pose is an artificial x_i)
-            # curr_pose = robot.predict_state(prev_pose)
+            # Predict the current pose given the previous pose (where curr_pose is an artificial x_i)            
             curr_odo = robot.get_odo()
             curr_pose,_,_ =  geometry.Relative2AbsolutePose(prev_pose, curr_odo)
-            #curr_pose = np.reshape(3,1)
-            # New landmark?
 
             # Calculate residual and Jacobians for motion
             predicted_motion, F_k, G_k = geometry.Absolute2RelativePose(prev_pose, curr_pose)
+            
             residual_motion = predicted_motion - np.reshape(robot.get_odo(),(3,1))
 
             # Multiply by motion covariance
@@ -202,6 +201,9 @@ class LeastSquaresSolver(object):
 
             current_H_col += 1
 
+            for i in range(3):
+                prev_pose[i] = np.array(curr_pose[i,0])
+
 
     # Construct a vector of the state values
     def construct_state_vec(self):
@@ -227,8 +229,9 @@ class LeastSquaresSolver(object):
         for i in range(len(state_vec)):
             new_state_vec[i] = state_vec[i] + float(delta_star[i])
 
-        for state_idx in range(len(self.states)):
+        for state_idx in range(len(self.states)):       
             current = new_state_vec[state_idx*3:(state_idx+1)*3]
+            current[-1] = geometry.pi2pi(current[-1])
             self.states[state_idx].set_current(current)
         
         offset = len(self.states)*3
