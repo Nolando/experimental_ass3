@@ -13,6 +13,22 @@ import matplotlib.pyplot as plt
 from sensor_msgs.msg import LaserScan           # /scan
 from rospy_tutorials.msg import Floats
 
+#################################################################################
+# Maps the range of 
+def pi2pi(angle):
+    """
+    Maps angle to the range of [-pi, pi]
+    :param angle: then angle that needs to be mapped to the range [-pi, pi]
+    :return : angle in the range [-pi, pi]
+    """
+    dp = 2*np.pi
+    if angle <= -dp or angle >= dp:
+        angle = angle % dp
+    if angle >= np.pi:
+        angle = angle - dp
+    if angle <= -np.pi:
+        angle = angle + dp
+    return angle
 
 #################################################################################
 # Subscriber callback function for odom saves data
@@ -170,12 +186,17 @@ def icp_transformation_callback(data):                                          
 
     # Multiply the two matrices
     # result = np.matmul(result_temp, icp_transformation_matrix)                                # float64
-    temp_result = np.matmul(frame_conv, result_temp)
-    result = np.matmul(temp_result, icp_transformation_matrix)
+    # temp_result = np.matmul(frame_conv, result_temp)
+    result = np.matmul(result_temp, icp_transformation_matrix)
+
+    ####################################################
+    # WILL NEED TO ACCOUNT FOR THE SINE AND COSINE CHANGES - LOOK AT Q2 CODE - NEED AN IF STATEMENT TO ACCOUNT FOR PI SIGN CHANGES
+    # In geometry.py in LAB3_SLAM
+    ####################################################
 
     # Next x and y values for icp
-    icpNextX = -1 * result[0, 3]
-    icpNextY = -1 * result[1, 3]
+    icpNextX = result[0, 3]
+    icpNextY = result[1, 3]
 
     # Add the current x and y pose positions to the odom lists
     icpX.append(icpNextX)                                                                   # float64
