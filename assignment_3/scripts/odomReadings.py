@@ -1,17 +1,6 @@
 #!/usr/bin/env python3
 # Machine Unlearning
 
-# Note - things to write about in report
-# - chacking the different types of all variables
-# - different methods of inputing data into open3d format
-#       - trying using the single data array open3d utility functions
-#       - having three rows of same data like it is a col of data
-#       - spliting the points in 2 and in 3 to input into open3d
-#       - only using the x and y values (since 2D)
-#       - ended up going with converting to pointcloud2 then to numpy array (open3d)
-# - subscriber diagrams, rosnodes
-# - data flow diagram
-
 # Subscribe to the odom topic to get the turtlebot odometry readings  
 import rospy
 import copy
@@ -23,6 +12,10 @@ from nav_msgs.msg import Odometry               # /odom
 import matplotlib.pyplot as plt
 from sensor_msgs.msg import LaserScan           # /scan
 from rospy_tutorials.msg import Floats
+
+#################################################################################
+MAX_RANGE = -1
+MIN_RANGE = -1
 
 #################################################################################
 # Converts the angles and accounts for cosine and sine angles. Obtained from 
@@ -118,28 +111,18 @@ def laser_callback(data):
 
     # Update old pointcloud variable - NEED TO COPY OR ELSE IS PYTHON REFERENCES
     old_pcd = copy.deepcopy(new_pcd)
-
     data_copy = copy.deepcopy(data)
 
     # Save the ranges from the odometry readings
-    laser_ranges = np.asarray(data.ranges)                                                      # float64
+    laser_ranges = np.asarray(data.ranges)
     laser_copy = copy.deepcopy(laser_ranges)
 
-    # Intensities for the odom readings
-    laser_intense = np.asarray(data.intensities)  
-    intense_copy = copy.deepcopy(laser_intense)
+    # MAximum and minimum ranges for the filtering
+    MAX_RANGE = data.range_max
+    MIN_RANGE = data.range_min
 
     # Discard the values outside of the max and min ranges - can use this later for range filter
-    data_copy.ranges = tuple(laser_copy[(laser_copy > data.range_min) & (laser_copy < data.range_max)])
-    data_copy.intensities = tuple(intense_copy[(laser_copy > data.range_min) & (laser_copy < data.range_max)])
-
-    #####################################################################################################
-    # 3 rows for open3d Vector3dVector format
-    # new_data = np.vstack([laser_ranges[0:120], laser_ranges[120:240], laser_ranges[240:360]])   # float64
-
-    # Format of the data is x and y, with z as zero
-    # zeros_row = np.zeros(laser_copy.size/2)
-    # new_data = np.vstack([laser_copy[0:zeros_row.size], laser_copy[zeros_row.size:2*zeros_row.size], zeros_row])
+    data_copy.ranges = tuple(laser_copy[(laser_copy > MIN_RANGE) & (laser_copy < MAX_RANGE)])
 
     # Converting the LaserScan message into PointCloud2
     lp = lg.LaserProjection()
@@ -153,7 +136,6 @@ def laser_callback(data):
     np_points[:, 0] = np.resize(pc['x'], height * width)
     np_points[:, 1] = np.resize(pc['y'], height * width)
     np_points[:, 2] = np.resize(pc['z'], height * width)
-    #####################################################################################################
 
     # Convert the numpy array to open3d type
     new_pcd.points = o3d.utility.Vector3dVector(np_points)
@@ -161,43 +143,44 @@ def laser_callback(data):
     # Check that the pointclouds are different
     if old_pcd.points != new_pcd.points and np.asarray(old_pcd.points).size != 0:
 
-        ############################################################
         # draw_registration_result(old_pcd, new_pcd, np.identity(4))
-        ############################################################
         
         # Conduct ICP registration
         icp_registration(old_pcd, new_pcd)
-
-    # # LATER IN Q1 CAN CHANGE THE MAX AND MIN RANGE BY WRITING TO RANGE_MIN AND RANGE_MAX
 
 
 #################################################################################
 # Subscriber for the trasnformation to calcualte the overall resultant transform 
 # and get the x and y trajectory
-def icp_transformation_callback(data):                                                          # data.data is a tuple
+def icp_transformation_callback(data):
 
-    global icp_transformation_matrix, result, icpNextX, icpNextY                                # result is float64
+    global icp_transformation_matrix, result, icpNextX, icpNextY
 
     # Add copy
     result_temp = copy.deepcopy(result)
 
     # Convert data into a numpy matrix
-    icp_transformation_matrix = np.reshape(np.array(data.data), (4, 4))                         # float64
+    icp_transformation_matrix = np.reshape(np.array(data.data), (4, 4))
 
+    # While loop to account for the negative since and cosine angles
+    i = 0
+    j = 0
+    while i < 3:
+        while j < 3:
+            icp_transformation_matrix[i,j] = pi2pi(icp_transformation_matrix[i,j])
+            result_temp[i,j] = pi2pi(result_temp[i,j])
+            j += 1
+        i += 1
+    
     # Multiply the two matrices
     result = np.matmul(result_temp, icp_transformation_matrix)
-
-    ####################################################
-    # WILL NEED TO ACCOUNT FOR THE SINE AND COSINE CHANGES - LOOK AT Q2 CODE - NEED AN IF STATEMENT TO ACCOUNT FOR PI SIGN CHANGES
-    # In geometry.py in LAB3_SLAM
-    ####################################################
 
     # Next x and y values for icp
     icpNextX = result[0, 3]
     icpNextY = result[1, 3]
 
     # Add the current x and y pose positions to the odom lists
-    icpX.append(icpNextX)                                                                   # float64
+    icpX.append(icpNextX)
     icpY.append(icpNextY)     
     
 
@@ -237,47 +220,47 @@ def icp_registration(source, target):
     ############################################################
     # draw_registration_result(source_temp, target_temp, reg_p2p.transformation)
     ############################################################
-    print(reg_p2p.transformation)
     
     # Flatten the matrix for publishing
-    icp_transformation = reg_p2p.transformation.flatten()                                       # float64
-    flat_array = np.array(icp_transformation, dtype=np.float32)                                 # float32
-    
+    icp_transformation = reg_p2p.transformation.flatten()
+    flat_array = np.array(icp_transformation, dtype=np.float32)
+
     # Publish the ICP transformation as an array - needs to be float32
     icp_pub.publish(flat_array)
 
 #################################################################################
-# def realTimeErrors(icpNextX, icpNextY, odomNextX, odomNextY):
+# Function to get the real time error
+def realTimeErrors(icpNextX, icpNextY, odomNextX, odomNextY):
     
-#     # Limit value for the current iteration
-#     iterationLimit = 10
+    # Limit value for the current iteration
+    iterationLimit = 10
 
-#     # Calculate the next errors
-#     nextRelativeX = abs(icpNextX - odomNextX)                                                              # float64
-#     nextRelativeY = abs(icpNextY - odomNextY)                                                              # float64
-#     nextAbsoluteX = nextRelativeX/odomNextX
-#     nextAbsoluteY = nextRelativeY/odomNextY
+    # Calculate the next errors
+    nextRelativeX = abs(icpNextX - odomNextX)
+    nextRelativeY = abs(icpNextY - odomNextY)
+    nextAbsoluteX = nextRelativeX/odomNextX
+    nextAbsoluteY = nextRelativeY/odomNextY
 
-#     # Add to the error sums
-#     realRx += nextRelativeX
-#     realRy += nextRelativeY
-#     realAx += nextAbsoluteX
-#     realAy += nextAbsoluteY
-#     print("Hello")
-#     # Check if the new average error is ready 
-#     if iterations > iterationLimit:
+    # Add to the error sums
+    realRx += nextRelativeX
+    realRy += nextRelativeY
+    realAx += nextAbsoluteX
+    realAy += nextAbsoluteY
+    print("Hello")
+    # Check if the new average error is ready 
+    if iterations > iterationLimit:
         
-#         # Display the new average errors
-#         #print(realRx/10)
-#         print("DONE")
-#         # Reset the error lists
-#         realRx = 0
-#         realRy = 0
-#         realAx = 0
-#         realAy = 0
+        # Display the new average errors
+        #print(realRx/10)
+        print("DONE")
+        # Reset the error lists
+        realRx = 0
+        realRy = 0
+        realAx = 0
+        realAy = 0
 
-#     # Update iterations
-#     iterations += 1
+    # Update iterations
+    iterations += 1
 
 
 #################################################################################
@@ -285,14 +268,12 @@ def main():
 
     # Global vairables
     global odomX, odomY, new_pcd, old_pcd, icp_pub, icpX, icpY, result, iterations
-    #global realRx, realRy, realAx, realAy
-
-    #realRx = 0
-    #realRy = 0
-    #realAx = 0
-    #realAy = 0
-
-    #iterations = 0
+    global realRx, realRy, realAx, realAy
+    realRx = 0
+    realRy = 0
+    realAx = 0
+    realAy = 0
+    iterations = 0
 
     # Global variable initialisation
     result = np.array([[1, 0, 0, 0],
@@ -329,7 +310,7 @@ def main():
             rospy.Subscriber("ICP_transformation", Floats, icp_transformation_callback)
                 
             # Error calc and print function
-            #realTimeErrors(icpNextX, icpNextY, odomNextX, odomNextY)
+            realTimeErrors(icpNextX, icpNextY, odomNextX, odomNextY)
             
             # Sleep until next spin
             rate.sleep()
@@ -338,7 +319,7 @@ def main():
 
         # Plot the odometry trajectory 
         plt.plot(odomX, odomY, icpX, icpY)
-        plt.title("Odometry Readings Trajectory")
+        plt.title("Odometry and ICP Estimate Trajectories")
         plt.xlabel("X pose position")
         plt.ylabel("Y pose position")
         plt.show()
