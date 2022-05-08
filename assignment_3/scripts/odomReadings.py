@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 # Machine Unlearning
 
+# Note - things to write about in report
+# - chacking the different types of all variables
+# - different methods of inputing data into open3d format
+#       - trying using the single data array open3d utility functions
+#       - having three rows of same data like it is a col of data
+#       - spliting the points in 2 and in 3 to input into open3d
+#       - only using the x and y values (since 2D)
+#       - ended up going with converting to pointcloud2 then to numpy array (open3d)
+# - subscriber diagrams, rosnodes
+# - data flow diagram
+
 # Subscribe to the odom topic to get the turtlebot odometry readings  
 import rospy
 import copy
@@ -14,13 +25,9 @@ from sensor_msgs.msg import LaserScan           # /scan
 from rospy_tutorials.msg import Floats
 
 #################################################################################
-# Maps the range of 
+# Converts the angles and accounts for cosine and sine angles. Obtained from 
+# Assignment 3 provided code.
 def pi2pi(angle):
-    """
-    Maps angle to the range of [-pi, pi]
-    :param angle: then angle that needs to be mapped to the range [-pi, pi]
-    :return : angle in the range [-pi, pi]
-    """
     dp = 2*np.pi
     if angle <= -dp or angle >= dp:
         angle = angle % dp
@@ -35,11 +42,10 @@ def pi2pi(angle):
 def odom_callback(data):
 
     # Global variables for odom data
-    global odom_pose, odom_twist, odomNextX, odomNextY
+    global odom_pose, odomNextX, odomNextY
 
     # Save the data from the odometry readings
     odom_pose = data.pose
-    odom_twist = data.twist
 
     # Next odom x and y values
     odomNextX = np.float64(odom_pose.pose.position.x)
@@ -178,15 +184,7 @@ def icp_transformation_callback(data):                                          
     # Convert data into a numpy matrix
     icp_transformation_matrix = np.reshape(np.array(data.data), (4, 4))                         # float64
 
-    # Frame 
-    frame_conv = np.array([[1, 0, 0, 0],
-                           [0, 1, 0, 0],
-                           [0, 0, 1, 0],
-                           [0, 0, 0, 1]], dtype=np.float64)
-
     # Multiply the two matrices
-    # result = np.matmul(result_temp, icp_transformation_matrix)                                # float64
-    # temp_result = np.matmul(frame_conv, result_temp)
     result = np.matmul(result_temp, icp_transformation_matrix)
 
     ####################################################
@@ -248,6 +246,7 @@ def icp_registration(source, target):
     # Publish the ICP transformation as an array - needs to be float32
     icp_pub.publish(flat_array)
 
+#################################################################################
 # def realTimeErrors(icpNextX, icpNextY, odomNextX, odomNextY):
     
 #     # Limit value for the current iteration
@@ -323,11 +322,11 @@ def main():
         while not rospy.is_shutdown():
 
             # Subscribe to odometry, scan topics
-            rospy.Subscriber("/odom", Odometry, odom_callback)#, queue_size=1)
-            rospy.Subscriber("/scan", LaserScan, laser_callback)#, queue_size=1)
+            rospy.Subscriber("/odom", Odometry, odom_callback)
+            rospy.Subscriber("/scan", LaserScan, laser_callback)
 
             # Subscribe to the ICP transformation published data
-            rospy.Subscriber("ICP_transformation", Floats, icp_transformation_callback)#, queue_size=1)
+            rospy.Subscriber("ICP_transformation", Floats, icp_transformation_callback)
                 
             # Error calc and print function
             #realTimeErrors(icpNextX, icpNextY, odomNextX, odomNextY)
@@ -339,7 +338,6 @@ def main():
 
         # Plot the odometry trajectory 
         plt.plot(odomX, odomY, icpX, icpY)
-        # plt.plot(icpX, icpY)
         plt.title("Odometry Readings Trajectory")
         plt.xlabel("X pose position")
         plt.ylabel("Y pose position")
